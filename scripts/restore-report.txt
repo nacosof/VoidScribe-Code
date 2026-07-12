@@ -1,0 +1,103 @@
+﻿=== Restore from transcript ===
+Transcript: C:\Users\dima2\.cursor\projects\d-frontend-developed-React-VoidScribe-exe-dmg\agent-transcripts\eceea267-8a3b-45ef-95ee-b2aa47da46bb
+Sources: eceea267-8a3b-45ef-95ee-b2aa47da46bb.jsonl, 1de34269-7386-4275-b543-497c8cc567b1.jsonl, 804d0e6b-dfef-44fa-9534-7ba1ee8596e3.jsonl, 9d8de60f-7ce1-4247-91f2-913c2c58ea31.jsonl, cbf5c360-8d02-4a57-a514-ac61ef542fd7.jsonl, ed6f10a7-1ada-4619-ad21-85393b46b59d.jsonl
+Events: 980
+Files written: 35
+
+=== Critical files status ===
+  package.json: no operations in transcript
+  src/App.tsx: NEEDS BASE (StrReplace only)
+  electron/main/index.ts: NEEDS BASE (StrReplace only)
+  electron/main/agent-tools.ts: NEEDS BASE (StrReplace only)
+  electron/main/ai.ts: NEEDS BASE (StrReplace only)
+  electron/main/workspace.ts: NEEDS BASE (StrReplace only)
+  electron/preload/index.ts: NEEDS BASE (StrReplace only)
+  electron/main/types.ts: no operations in transcript
+  src/types.ts: NEEDS BASE (StrReplace only)
+
+=== Needs manual reconstruction (StrReplace without Write) ===
+Count: 36
+  electron/main/agent-reliability.ts
+  electron/main/agent-tool-order.ts
+  electron/main/agent-tool-parse.ts
+  electron/main/agent-tool-result.ts
+  electron/main/agent-tools.ts
+  electron/main/agent-workspace.ts
+  electron/main/agent.ts
+  electron/main/ai.ts
+  electron/main/chat-vision.ts
+  electron/main/index.ts
+  electron/main/pty-manager.ts
+  electron/main/store.ts
+  electron/main/workspace.ts
+  electron/preload/index.ts
+  src/App.tsx
+  src/components/AgentComposerStatus.tsx
+  src/components/CodeEditorPanel.tsx
+  src/components/EditorTabsBar.tsx
+  src/components/FileExplorer.tsx
+  src/components/MessageList.tsx
+  src/components/SettingsScreen.tsx
+  src/components/UnsavedFileDialog.tsx
+  src/components/WorkspaceConsole.tsx
+  src/hooks/useChatSessions.ts
+  src/index.css
+  src/lib/agent-activity-ui.ts
+  src/lib/agent-roles.ts
+  src/lib/agent-tool-parse.ts
+  src/lib/chat-sessions.ts
+  src/lib/codemirror-setup.ts
+  src/lib/console-lines.ts
+  src/lib/context-usage.ts
+  src/lib/i18n.ts
+  src/lib/model-presets.ts
+  src/lib/providers.ts
+  src/types.ts
+
+=== Restored with failed StrReplace steps ===
+  electron/main/agent-anthropic.ts: 57 failed replace(s)
+  electron/main/agent-runtime/anthropic-provider.ts: 1 failed replace(s)
+  electron/main/agent-runtime/scheduler.ts: 1 failed replace(s)
+  electron/main/chat-requests.ts: 3 failed replace(s)
+  src/components/AgentActivityFeed.tsx: 1 failed replace(s)
+  src/lib/agent-prompt.ts: 38 failed replace(s)
+
+=== package.json content found in transcript ===
+  (none from Write or dependency StrReplace blocks)
+
+=== Written files ===
+  electron/main/agent-anthropic.ts
+  electron/main/agent-context-budget.ts
+  electron/main/agent-openai-loop.ts
+  electron/main/agent-path-edit-guard.ts
+  electron/main/agent-runtime/anthropic-provider.ts
+  electron/main/agent-runtime/edit-overlay.ts
+  electron/main/agent-runtime/events.ts
+  electron/main/agent-runtime/index.ts
+  electron/main/agent-runtime/openai-provider.ts
+  electron/main/agent-runtime/provider-types.ts
+  electron/main/agent-runtime/scheduler.ts
+  electron/main/agent-runtime/tool-batch.ts
+  electron/main/agent-runtime/transcript-collector.ts
+  electron/main/agent-transcript-compact.ts
+  electron/main/agent-transcript-replay.ts
+  electron/main/build-diagnostics.ts
+  electron/main/chat-requests.ts
+  electron/main/force-delete.ts
+  electron/main/project-scaffold.ts
+  electron/main/search-replace-match.ts
+  electron/main/terminal.ts
+  electron/main/workspace-grep.ts
+  electron/main/workspace-watcher.ts
+  scripts/restore-agent-tools.mjs
+  src/components/AgentActivityFeed.tsx
+  src/components/ChatModeSelector.tsx
+  src/hooks/useEditorTabs.ts
+  src/lib/agent-prompt.ts
+  src/lib/agent-steps.ts
+  src/lib/agent-transcript.ts
+  src/lib/chat-modes.ts
+  src/lib/editor-search-panel.ts
+  src/lib/model-capabilities.ts
+  src/lib/model-vision.ts
+  src/lib/void-agent-prompt.ts

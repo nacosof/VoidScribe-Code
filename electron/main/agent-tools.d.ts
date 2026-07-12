@@ -1,0 +1,20 @@
+import type OpenAI from "openai";
+import type { ChatCompletionTool } from "openai/resources/chat/completions";
+import { type AgentToolResult } from "./agent-tool-result";
+import { type ChatInteractionMode } from "../../src/lib/chat-modes";
+import type { AgentToolEvent } from "./agent-runtime/events";
+export type AgentInteractionMode = ChatInteractionMode;
+export type OpenAiMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+export declare const AGENT_TOOLS: ChatCompletionTool[];
+export declare function getAgentToolsForMode(mode?: AgentInteractionMode): ChatCompletionTool[];
+export declare function executeAgentTool(input: {
+    workspaceRoot: string;
+    name: string;
+    argsJson: string;
+    signal?: AbortSignal;
+    onEvent: (event: AgentToolEvent) => void;
+    userIntent?: string;
+    interactionMode?: AgentInteractionMode;
+}): Promise<AgentToolResult>;
+export { runAgentToolLoop } from "./agent-openai-loop";
+export type { AgentToolEvent } from "./agent-runtime/events";
