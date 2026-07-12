@@ -63,20 +63,20 @@ function setMessageText(message: OpenAiMessage, text: string): void {
 function truncateText(text: string, limit: number, note: string): string {
     if (text.length <= limit)
         return text;
-    return `${text.slice(0, limit)}\n\nвЂ¦ ${note}`;
+    return `${text.slice(0, limit)}\n\n… ${note}`;
 }
 export function trimWorkspaceSnapshotInSystem(systemContent: string, maxSnapshotChars = 3500): string {
-    const start = systemContent.indexOf("--- РЎРѕСЃС‚РѕСЏРЅРёРµ РѕС‚РєСЂС‹С‚РѕР№ СЂР°Р±РѕС‡РµР№ РїР°РїРєРё ---");
+    const start = systemContent.indexOf("--- Состояние открытой рабочей папки ---");
     if (start < 0)
         return systemContent;
-    const end = systemContent.indexOf("--- РєРѕРЅРµС† СЃРЅРёРјРєР° ---", start);
+    const end = systemContent.indexOf("--- конец снимка ---", start);
     if (end < 0)
         return systemContent;
-    const blockEnd = end + "--- РєРѕРЅРµС† СЃРЅРёРјРєР° ---".length;
+    const blockEnd = end + "--- конец снимка ---".length;
     const block = systemContent.slice(start, blockEnd);
     if (block.length <= maxSnapshotChars)
         return systemContent;
-    const trimmed = truncateText(block, maxSnapshotChars, "(СЃРЅРёРјРѕРє РїР°РїРєРё СЃРѕРєСЂР°С‰С‘РЅ вЂ” list_directory РїСЂРё РЅСѓР¶РґРµ)");
+    const trimmed = truncateText(block, maxSnapshotChars, "(снимок папки сокращён — list_directory при нужде)");
     return systemContent.slice(0, start) + trimmed + systemContent.slice(blockEnd);
 }
 export function weightBasedTrimMessages(messages: OpenAiMessage[], charBudget: number): boolean {
@@ -178,11 +178,11 @@ function truncateToolMessages(messages: OpenAiMessage[], keepRecent: number, max
             continue;
         const content = typeof message.content === "string" ? message.content : "";
         if (trimSet.has(index)) {
-            message.content = truncateText(content, 160, "(СЃС‚Р°СЂС‹Р№ С€Р°Рі СЃРѕРєСЂР°С‰С‘РЅ)");
+            message.content = truncateText(content, 160, "(старый шаг сокращён)");
             continue;
         }
         if (content.length > maxChars) {
-            message.content = truncateText(content, maxChars, "(СЃРѕРєСЂР°С‰РµРЅРѕ РґР»СЏ Р»РёРјРёС‚Р° РєРѕРЅС‚РµРєСЃС‚Р°)");
+            message.content = truncateText(content, maxChars, "(сокращено для лимита контекста)");
         }
     }
 }
@@ -224,7 +224,7 @@ function dropMiddleAssistantRounds(messages: OpenAiMessage[], keepTail: number):
     }
     const system = messages[0];
     if (system?.role === "system" && typeof system.content === "string") {
-        const note = "[РЎРєСЂС‹С‚Рѕ СЂР°РЅРЅРёРµ С€Р°РіРё Р°РіРµРЅС‚Р° вЂ” РєРѕРЅС‚РµРєСЃС‚ СЃРѕРєСЂР°С‰С‘РЅ. read_file / list_directory РїСЂРё РЅСѓР¶РґРµ.]\n\n";
+        const note = "[Скрыто ранние шаги агента — контекст сокращён. read_file / list_directory при нужде.]\n\n";
         if (!system.content.includes(note.trim())) {
             system.content = note + system.content;
         }

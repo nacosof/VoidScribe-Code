@@ -667,6 +667,12 @@ body.sidebar--resizing .main {
   outline: none;
 }
 
+.file-tree--refreshing .file-tree__root::after {
+  content: "…";
+  margin-left: 6px;
+  opacity: 0.55;
+}
+
 .file-tree__root {
   padding: 10px 14px 8px;
   font-size: 11px;
@@ -738,6 +744,26 @@ body.sidebar--resizing .main {
 
 .file-tree__row--excluded .file-tree__name {
   color: var(--stardust-gray);
+}
+
+.file-tree__row--pending .file-tree__name,
+.file-tree__row--pending .file-tree__icon {
+  color: #79c0ff;
+}
+
+.file-tree__row--error .file-tree__name,
+.file-tree__row--error .file-tree__icon {
+  color: #f85149;
+}
+
+.file-tree__row--selected.file-tree__row--pending .file-tree__name,
+.file-tree__row--selected.file-tree__row--pending .file-tree__icon {
+  color: #9cd6ff;
+}
+
+.file-tree__row--selected.file-tree__row--error .file-tree__name,
+.file-tree__row--selected.file-tree__row--error .file-tree__icon {
+  color: #ff8f87;
 }
 
 .file-tree__chevron {

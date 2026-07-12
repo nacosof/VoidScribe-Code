@@ -12,6 +12,7 @@
 
 ```
 VoidScribe-Code/
+├── docs/                            # README, архитектура, лицензия
 ├── electron/
 │   ├── main/
 │   │   ├── index.ts                 # Окно, zoom, workspace watcher, IPC bootstrap

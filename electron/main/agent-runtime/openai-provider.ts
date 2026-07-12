@@ -96,12 +96,12 @@ export function createOpenAiSchedulerProvider(options: OpenAiSchedulerProviderOp
                 }
             }
             if (!response) {
-                throw new Error("РџСѓСЃС‚РѕР№ РѕС‚РІРµС‚ РјРѕРґРµР»Рё.");
+                throw new Error("Пустой ответ модели.");
             }
             const choice = response.choices[0];
             const message = choice?.message;
             if (!message) {
-                throw new Error("РџСѓСЃС‚РѕР№ РѕС‚РІРµС‚ РјРѕРґРµР»Рё.");
+                throw new Error("Пустой ответ модели.");
             }
             const resolved = resolveAssistantToolCalls({
                 content: message.content,

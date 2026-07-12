@@ -22,6 +22,18 @@ export type WorkspaceTreeNode = {
 };
 const HIDDEN_ENTRY_NAMES = new Set([".voidscribe-history"]);
 const AGENT_SNAPSHOT_SKIP_NAMES = new Set(["node_modules", ".voidscribe-history"]);
+const TREE_COLLAPSE_ONLY_NAMES = new Set([
+    "node_modules",
+    ".git",
+    ".next",
+    ".turbo",
+    "dist",
+    "build",
+    "out",
+    ".cache",
+    ".venv",
+    "__pycache__",
+]);
 export function normalizeAgentRelativePath(input: string): string {
     const normalized = input.replace(/\\/g, "/").replace(/^\.\//, "").trim();
     if (!normalized || normalized === ".")
@@ -189,6 +201,15 @@ async function buildWorkspaceTree(workspaceRoot: string, relativePath = ".", dep
     const nodes: WorkspaceTreeNode[] = [];
     for (const entry of entries) {
         if (entry.kind === "directory") {
+            if (TREE_COLLAPSE_ONLY_NAMES.has(entry.name)) {
+                nodes.push({
+                    name: entry.name,
+                    path: entry.path,
+                    kind: "directory",
+                    excluded: true,
+                });
+                continue;
+            }
             const children = await buildWorkspaceTree(workspaceRoot, entry.path, depth + 1, maxDepth);
             nodes.push({ name: entry.name, path: entry.path, kind: "directory", children });
         }

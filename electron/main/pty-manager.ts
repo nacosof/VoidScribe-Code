@@ -29,6 +29,10 @@ function send(channel: string, payload?: unknown): void {
         return;
     boundWindow.webContents.send(channel, payload);
 }
+/** Mirror/pipe stdout uses bare LF; xterm needs CR+LF or lines drift diagonally. */
+function normalizeTerminalOutput(data: string): string {
+    return data.replace(/(?<!\r)\n/g, "\r\n");
+}
 function shellLabel(): string {
     const activeTerminals = Array.from(sessions.values()).filter((session) => session.shellMode !== "mirror").length;
     return `Terminal ${activeTerminals + 1}`;
@@ -101,13 +105,13 @@ function spawnPipeShell(session: TerminalSession): {
         child.stdout?.on("data", (chunk: Buffer) => {
             send("terminal:data", {
                 sessionId: session.id,
-                data: chunk.toString("utf8"),
+                data: normalizeTerminalOutput(chunk.toString("utf8")),
             });
         });
         child.stderr?.on("data", (chunk: Buffer) => {
             send("terminal:data", {
                 sessionId: session.id,
-                data: chunk.toString("utf8"),
+                data: normalizeTerminalOutput(chunk.toString("utf8")),
             });
         });
         child.on("exit", (exitCode) => {
@@ -244,7 +248,7 @@ export function appendMirrorOutput(sessionId: string, data: string): void {
     if (!session.mirrorVisible) {
         revealMirrorSession(session);
     }
-    send("terminal:data", { sessionId, data });
+    send("terminal:data", { sessionId, data: normalizeTerminalOutput(data) });
 }
 export function ensureAgentMirrorSession(workspaceRoot: string): PtySessionInfo {
     const result = ensureMirrorSession(workspaceRoot);

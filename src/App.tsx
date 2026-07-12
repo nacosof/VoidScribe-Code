@@ -14,6 +14,7 @@ import { ChatTabsBar } from "@/components/ChatTabsBar";
 import { TitleBar } from "@/components/TitleBar";
 import { UnsavedFileDialog } from "@/components/UnsavedFileDialog";
 import { useEditorTabs } from "@/hooks/useEditorTabs";
+import { useFileTreeLintStatus } from "@/hooks/useFileTreeLintStatus";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import { applyTheme } from "@/lib/theme-vars";
 import { buildTitleBarFileMenu } from "@/lib/file-menu";
@@ -52,6 +53,7 @@ export function App() {
     const [recentWorkspaces, setRecentWorkspaces] = useState<string[]>([]);
     const [workspaceError, setWorkspaceError] = useState("");
     const [treeRefreshKey, setTreeRefreshKey] = useState(0);
+    const [treeFilePaths, setTreeFilePaths] = useState<string[]>([]);
     const [view, setView] = useState<"ide" | "settings">("ide");
     const [mode, setModeState] = useState<ChatInteractionMode>("agent");
     const [composer, setComposer] = useState("");
@@ -113,8 +115,21 @@ export function App() {
             setIsRestoringTabs(false);
         }
     }, []);
-    const refreshTree = useCallback(() => {
+    const refreshTreeNow = useCallback(() => {
         setTreeRefreshKey((key) => key + 1);
+    }, []);
+    const refreshTreeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const refreshTree = useCallback(() => {
+        if (refreshTreeTimerRef.current)
+            clearTimeout(refreshTreeTimerRef.current);
+        refreshTreeTimerRef.current = setTimeout(() => {
+            refreshTreeTimerRef.current = null;
+            refreshTreeNow();
+        }, 700);
+    }, [refreshTreeNow]);
+    useEffect(() => () => {
+        if (refreshTreeTimerRef.current)
+            clearTimeout(refreshTreeTimerRef.current);
     }, []);
     const pending = usePendingChanges({
         activeSessionId: chats.activeSessionId,
@@ -122,6 +137,12 @@ export function App() {
         workspacePath,
         editor,
         refreshTree,
+    });
+    const fileTreeErrorPaths = useFileTreeLintStatus({
+        workspacePath,
+        tabs: editor.tabs,
+        pendingChanges: pending.sessionPending,
+        treeFilePaths,
     });
     const agentStream = useAgentStream({
         lang,
@@ -496,7 +517,7 @@ export function App() {
       <TitleBar lang={lang} recentWorkspaces={recentWorkspaces} fileMenuItems={fileMenuItems} sidebarOpen={sidebarOpen} chatOpen={chatOpen} onToggleSidebar={isChatLayout ? undefined : () => setSidebarOpen((open) => !open)} onToggleChat={isChatLayout ? undefined : handleToggleChat} terminalOpen={terminalOpen} onToggleTerminal={() => setTerminalOpen((open) => !open)} onOpenSettings={() => setView("settings")} onRequestClose={() => void window.voidscribe.windowClose()}/>
       <div className={shellClass}>
         {!isChatLayout ? (<div className="sidebar-panel" style={{ width: sidebarOpen ? sidebarWidth : 0 }}>
-          <Sidebar workspacePath={workspacePath} selectedPath={editor.activePath} refreshKey={treeRefreshKey} lang={lang} onOpenFile={(path) => void openEditorFile(path)} onRefresh={refreshTree} onEntriesDeleted={(entries) => editor.removeTabsForDeletedEntries(entries)}/>
+          <Sidebar workspacePath={workspacePath} selectedPath={editor.activePath} refreshKey={treeRefreshKey} lang={lang} pendingPaths={pending.workspacePendingPaths} errorPaths={fileTreeErrorPaths} onTreeFilePathsChange={setTreeFilePaths} onOpenFile={(path) => void openEditorFile(path)} onRefresh={refreshTreeNow} onEntriesDeleted={(entries) => editor.removeTabsForDeletedEntries(entries)}/>
         </div>) : null}
         {!isChatLayout && sidebarOpen ? (<button type="button" className="sidebar-panel__resizer" aria-label={t(lang, "titleSidebarHide")} onMouseDown={() => {
                 resizeRef.current = "sidebar";

@@ -24,6 +24,11 @@ export function clampTerminalHeight(height: number): number {
     return Math.min(max, Math.max(MIN_TERMINAL_HEIGHT, Math.round(height)));
 }
 
+/** Bare LF (no CR) only moves the cursor down in xterm — normalize for mirror/pipe output. */
+export function normalizeXtermOutput(data: string): string {
+    return data.replace(/(?<!\r)\n/g, "\r\n");
+}
+
 export function readStoredTerminalHeight(): number {
     try {
         const saved = localStorage.getItem(TERMINAL_HEIGHT_KEY);

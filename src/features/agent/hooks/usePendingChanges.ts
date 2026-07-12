@@ -4,6 +4,9 @@ import type { useChatSessions } from "@/hooks/useChatSessions";
 import {
     addPendingChange,
     loadPendingChanges,
+    pendingChangesForWorkspace,
+    pendingChangesToPaths,
+    reconcilePendingStore,
     removePendingByPath,
     savePendingChanges,
 } from "@/lib/pending-changes";
@@ -36,7 +39,37 @@ export function usePendingChanges({
         savePendingChanges(pendingBySession);
     }, [pendingBySession]);
 
-    const sessionPending = (pendingBySession[activeSessionId] ?? []).filter((change) => !change.workspacePath || change.workspacePath === workspacePath);
+    useEffect(() => {
+        const root = workspacePath.trim();
+        if (!root)
+            return;
+        let cancelled = false;
+        void (async () => {
+            const reconciled = await reconcilePendingStore({
+                store: pendingBySessionRef.current,
+                workspacePath: root,
+                sessionIds: sessions.map((item) => item.id),
+                readFile: async (path) => {
+                    const result = await window.voidscribe.readWorkspaceFile(path);
+                    return result.ok
+                        ? { ok: true, content: result.content }
+                        : { ok: false };
+                },
+            });
+            if (cancelled)
+                return;
+            if (JSON.stringify(reconciled) !== JSON.stringify(pendingBySessionRef.current)) {
+                setPendingBySession(reconciled);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [workspacePath, sessions]);
+
+    const sessionPending = pendingChangesForWorkspace(pendingBySession[activeSessionId] ?? [], workspacePath);
+
+    const workspacePendingPaths = useMemo(() => pendingChangesToPaths(sessionPending), [sessionPending]);
 
     const activeAgentPending = useMemo(() => {
         if (!editor.activePath)
@@ -73,25 +106,19 @@ export function usePendingChanges({
         const root = workspacePath.trim();
         if (!root)
             return;
-        const list = pendingBySessionRef.current[sessionId] ?? [];
-        const verified: PendingFileChange[] = [];
-        for (const change of list) {
-            if (change.workspacePath && change.workspacePath !== root)
-                continue;
-            const disk = await window.voidscribe.readWorkspaceFile(change.path);
-            if (change.kind === "created" || change.kind === "modified") {
-                if (disk.ok)
-                    verified.push(change);
-            }
-            else {
-                verified.push(change);
-            }
-        }
-        setPendingBySession((prev) => ({
-            ...prev,
-            [sessionId]: verified,
-        }));
-    }, [workspacePath]);
+        const reconciled = await reconcilePendingStore({
+            store: pendingBySessionRef.current,
+            workspacePath: root,
+            sessionIds: sessions.map((item) => item.id),
+            readFile: async (path) => {
+                const result = await window.voidscribe.readWorkspaceFile(path);
+                return result.ok
+                    ? { ok: true, content: result.content }
+                    : { ok: false };
+            },
+        });
+        setPendingBySession(reconciled);
+    }, [workspacePath, sessions]);
 
     const undoPendingChange = useCallback(async (change: PendingFileChange) => {
         if (change.kind === "deleted") {
@@ -156,7 +183,7 @@ export function usePendingChanges({
     }, [activeSessionId, editor, refreshTree]);
 
     const openPendingFile = useCallback(async (path: string) => {
-        const change = (pendingBySessionRef.current[activeSessionId] ?? []).find((item) => pathsEqual(item.path, path) && (!item.workspacePath || item.workspacePath === workspacePath));
+        const change = sessionPending.find((item) => pathsEqual(item.path, path));
         if (change?.kind === "deleted")
             return;
         const disk = await window.voidscribe.readWorkspaceFile(path);
@@ -171,10 +198,11 @@ export function usePendingChanges({
             return;
         }
         await editor.openFile(path);
-    }, [activeSessionId, editor, workspacePath]);
+    }, [editor, sessionPending]);
 
     return {
         sessionPending,
+        workspacePendingPaths,
         activeAgentPending,
         trackFileChange,
         verifyPendingAfterFlush,

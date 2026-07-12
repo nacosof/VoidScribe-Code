@@ -99,6 +99,25 @@ function stripLineForScan(line: string, lintStrategy: string | null): string {
 function stripJsxTextFromLine(line: string): string {
     return line.replace(/>([^<{]*?)</g, "><");
 }
+function stripJsxMultilineText(content: string): string {
+    const lines = content.split("\n");
+    let inJsxText = false;
+    return lines.map((line) => {
+        const trimmed = line.trim();
+        if (inJsxText) {
+            if (/^<\/?[\w.-]/.test(trimmed) || /^\{/.test(trimmed) || /^\/\//.test(trimmed)) {
+                inJsxText = false;
+            }
+            else if (trimmed && !trimmed.includes("{")) {
+                return "";
+            }
+        }
+        if (!inJsxText && />[\s]*$/.test(line) && !/\/>\s*$/.test(trimmed)) {
+            inJsxText = true;
+        }
+        return line;
+    }).join("\n");
+}
 function isJsxLikePath(filePath?: string): boolean {
     if (!filePath)
         return false;
@@ -125,7 +144,10 @@ export function lintNonAsciiIdentifiers(content: string, lintStrategy: string | 
         return [];
     const diagnostics: LintDiagnostic[] = [];
     const isJsx = isJsxLikePath(filePath);
-    const lines = content.split("\n");
+    const source = isJsx && lintStrategy === "javascript"
+        ? stripJsxMultilineText(content)
+        : content;
+    const lines = source.split("\n");
     lines.forEach((line, lineIndex) => {
         let stripped = stripLineForScan(line, lintStrategy);
         if (isJsx && lintStrategy === "javascript") {

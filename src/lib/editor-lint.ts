@@ -5,7 +5,7 @@ import type { Diagnostic } from "@codemirror/lint";
 import type { LintDiagnostic } from "@/types";
 import { getLintStrategy } from "@/lib/language-registry";
 import { lintNonAsciiIdentifiers } from "@/lib/non-ascii-lint";
-function dedupeDiagnostics(items: LintDiagnostic[]): LintDiagnostic[] {
+export function dedupeDiagnostics(items: LintDiagnostic[]): LintDiagnostic[] {
     const seen = new Set<string>();
     return items.filter((item) => {
         const key = `${item.line}:${item.column}:${item.endColumn}:${item.message}`;
@@ -30,19 +30,27 @@ function toCodeMirrorDiagnostic(doc: Text, item: LintDiagnostic): Diagnostic {
         message: item.message,
     };
 }
+export function hasLintErrors(diagnostics: LintDiagnostic[]): boolean {
+    return diagnostics.some((item) => item.severity === "error");
+}
+
+export async function lintFileContent(filePath: string, content: string): Promise<LintDiagnostic[]> {
+    const strategy = getLintStrategy(filePath);
+    const local = lintNonAsciiIdentifiers(content, strategy, filePath);
+    if (!window.voidscribe?.lintWorkspaceFile) {
+        return local;
+    }
+    const result = await window.voidscribe.lintWorkspaceFile(filePath, content);
+    const remote = result.ok ? result.diagnostics : [];
+    return dedupeDiagnostics([...local, ...remote]);
+}
+
 export function getEditorLintExtensions(filePath: string): Extension[] {
     return [
         lintGutter(),
         linter(async (view) => {
             const content = view.state.doc.toString();
-            const strategy = getLintStrategy(filePath);
-            const local = lintNonAsciiIdentifiers(content, strategy, filePath);
-            if (!window.voidscribe?.lintWorkspaceFile) {
-                return local.map((item) => toCodeMirrorDiagnostic(view.state.doc, item));
-            }
-            const result = await window.voidscribe.lintWorkspaceFile(filePath, content);
-            const remote = result.ok ? result.diagnostics : [];
-            const merged = dedupeDiagnostics([...local, ...remote]);
+            const merged = await lintFileContent(filePath, content);
             return merged.map((item) => toCodeMirrorDiagnostic(view.state.doc, item));
         }, { delay: 400 }),
     ];

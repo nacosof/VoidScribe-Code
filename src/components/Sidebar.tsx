@@ -7,6 +7,9 @@ type Props = {
     selectedPath: string | null;
     refreshKey: number;
     lang: UiLanguage;
+    pendingPaths?: ReadonlySet<string>;
+    errorPaths?: ReadonlySet<string>;
+    onTreeFilePathsChange?: (paths: string[]) => void;
     onOpenFile: (path: string) => void;
     onRefresh: () => void;
     onEntriesDeleted: (entries: Array<{
@@ -14,7 +17,7 @@ type Props = {
         kind: "file" | "directory";
     }>) => void;
 };
-export function Sidebar({ workspacePath, selectedPath, refreshKey, lang, onOpenFile, onRefresh, onEntriesDeleted, }: Props) {
+export function Sidebar({ workspacePath, selectedPath, refreshKey, lang, pendingPaths, errorPaths, onTreeFilePathsChange, onOpenFile, onRefresh, onEntriesDeleted, }: Props) {
     const explorerRef = useRef<FileExplorerHandle>(null);
     function handleSidebarBackgroundMouseDown(event: React.MouseEvent) {
         if (event.button !== 0)
@@ -29,7 +32,7 @@ export function Sidebar({ workspacePath, selectedPath, refreshKey, lang, onOpenF
       <div className="sidebar__body" onMouseDown={handleSidebarBackgroundMouseDown}>
         {!workspacePath ? (<div className="sidebar__empty">
             <p>{t(lang, "noWorkspace")}</p>
-          </div>) : (<FileExplorer ref={explorerRef} workspacePath={workspacePath} selectedPath={selectedPath} refreshKey={refreshKey} lang={lang} onSelectFile={onOpenFile} onTreeRefresh={onRefresh} onEntriesDeleted={onEntriesDeleted}/>)}
+          </div>) : (<FileExplorer ref={explorerRef} workspacePath={workspacePath} selectedPath={selectedPath} refreshKey={refreshKey} lang={lang} pendingPaths={pendingPaths} errorPaths={errorPaths} onTreeFilePathsChange={onTreeFilePathsChange} onSelectFile={onOpenFile} onTreeRefresh={onRefresh} onEntriesDeleted={onEntriesDeleted}/>)}
       </div>
     </aside>);
 }

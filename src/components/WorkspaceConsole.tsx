@@ -11,6 +11,7 @@ import { TerminalPane } from "@/features/terminal/components/TerminalPane";
 import {
     appendLogLine,
     clampTerminalHeight,
+    normalizeXtermOutput,
     PANEL_TABS,
     readStoredTerminalHeight,
     TERMINAL_HEIGHT_KEY,
@@ -75,10 +76,11 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
     applySessionListRef.current = applySessionList;
 
     const appendSessionOutput = useCallback((sessionId: string, data: string) => {
-        sessionOutputLogRef.current.set(sessionId, (sessionOutputLogRef.current.get(sessionId) ?? "") + data);
+        const normalized = normalizeXtermOutput(data);
+        sessionOutputLogRef.current.set(sessionId, (sessionOutputLogRef.current.get(sessionId) ?? "") + normalized);
         const pane = panesRef.current.get(sessionId);
         if (pane) {
-            pane.term.write(data);
+            pane.term.write(normalized);
             pane.term.scrollToBottom();
         }
     }, []);

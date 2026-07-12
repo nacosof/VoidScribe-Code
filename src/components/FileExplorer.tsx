@@ -3,13 +3,18 @@ import { createPortal } from "react-dom";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CHAT_ENTRY_DRAG_MIME } from "@/lib/chat-context";
 import type { UiLanguage, WorkspaceTreeNode } from "@/types";
+import { collectTreeFilePaths } from "@/lib/workspace-tree";
 import { t } from "@/lib/i18n";
 const SKIP_DELETE_CONFIRM_KEY = "voidscribe-skip-delete-confirm";
+const EMPTY_PATH_SET: ReadonlySet<string> = new Set();
 type FileExplorerProps = {
     workspacePath: string;
     selectedPath: string | null;
     refreshKey?: number;
     lang: UiLanguage;
+    pendingPaths?: ReadonlySet<string>;
+    errorPaths?: ReadonlySet<string>;
+    onTreeFilePathsChange?: (paths: string[]) => void;
     onSelectFile: (path: string) => void;
     onTreeRefresh: () => void;
     onEntriesDeleted?: (entries: Array<{
@@ -106,21 +111,34 @@ type TreeNodeProps = {
     depth: number;
     selectedPaths: Set<string>;
     expanded: Set<string>;
+    pendingPaths: ReadonlySet<string>;
+    errorPaths: ReadonlySet<string>;
     onToggle: (path: string) => void;
     onItemClick: (event: React.MouseEvent, target: DeletableTarget) => void;
     onContextMenu: (event: React.MouseEvent, target: ContextTarget) => void;
 };
-function TreeNode({ node, depth, selectedPaths, expanded, onToggle, onItemClick, onContextMenu, }: TreeNodeProps) {
+function nodePathKey(path: string): string {
+    return normalizePath(path);
+}
+function TreeNode({ node, depth, selectedPaths, expanded, pendingPaths, errorPaths, onToggle, onItemClick, onContextMenu, }: TreeNodeProps) {
     const isDir = node.kind === "directory";
     const isExcluded = Boolean(node.excluded);
     const canExpand = isDir && !isExcluded;
     const isOpen = canExpand && expanded.has(node.path);
     const isSelected = selectedPaths.has(node.path);
+    const pathKey = nodePathKey(node.path);
+    const hasError = !isDir && errorPaths.has(pathKey);
+    const isPending = !isDir && pendingPaths.has(pathKey);
+    const statusClass = hasError
+        ? " file-tree__row--error"
+        : isPending
+            ? " file-tree__row--pending"
+            : "";
     const target: DeletableTarget = isDir
         ? { kind: "directory", path: node.path, name: node.name }
         : { kind: "file", path: node.path, name: node.name };
     return (<>
-      <button type="button" className={`file-tree__row${isSelected ? " file-tree__row--selected" : ""}${isExcluded ? " file-tree__row--excluded" : ""}`} style={{ paddingLeft: 8 + depth * 14 }} draggable={!isExcluded} onDragStart={(event) => {
+      <button type="button" className={`file-tree__row${isSelected ? " file-tree__row--selected" : ""}${isExcluded ? " file-tree__row--excluded" : ""}${statusClass}`} style={{ paddingLeft: 8 + depth * 14 }} draggable={!isExcluded} onDragStart={(event) => {
             event.dataTransfer.setData(CHAT_ENTRY_DRAG_MIME, JSON.stringify({
                 kind: isDir ? "directory" : "file",
                 path: node.path,
@@ -149,16 +167,17 @@ function TreeNode({ node, depth, selectedPaths, expanded, onToggle, onItemClick,
       </button>
 
       {isDir && isOpen
-            ? node.children?.map((child) => (<TreeNode key={child.path} node={child} depth={depth + 1} selectedPaths={selectedPaths} expanded={expanded} onToggle={onToggle} onItemClick={onItemClick} onContextMenu={onContextMenu}/>))
+            ? node.children?.map((child) => (<TreeNode key={child.path} node={child} depth={depth + 1} selectedPaths={selectedPaths} expanded={expanded} pendingPaths={pendingPaths} errorPaths={errorPaths} onToggle={onToggle} onItemClick={onItemClick} onContextMenu={onContextMenu}/>))
             : null}
     </>);
 }
-export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function FileExplorer({ workspacePath, selectedPath, refreshKey = 0, lang, onSelectFile, onTreeRefresh, onEntriesDeleted, }, ref) {
+export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function FileExplorer({ workspacePath, selectedPath, refreshKey = 0, lang, pendingPaths, errorPaths, onTreeFilePathsChange, onSelectFile, onTreeRefresh, onEntriesDeleted, }, ref) {
     const [rootName, setRootName] = useState("");
     const [nodes, setNodes] = useState<WorkspaceTreeNode[]>([]);
     const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["."]));
     const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState("");
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const [nameDialog, setNameDialog] = useState<NameDialogState | null>(null);
@@ -168,6 +187,12 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
     const [actionError, setActionError] = useState("");
     const nameInputRef = useRef<HTMLInputElement>(null);
     const treeRef = useRef<HTMLDivElement>(null);
+    const onTreeFilePathsChangeRef = useRef(onTreeFilePathsChange);
+    onTreeFilePathsChangeRef.current = onTreeFilePathsChange;
+    const cachedTreeRef = useRef<{ workspacePath: string; hasNodes: boolean }>({
+        workspacePath: "",
+        hasNodes: false,
+    });
     const clearTreeSelection = useCallback(() => {
         setSelectedPaths(new Set());
         setContextMenu(null);
@@ -193,28 +218,51 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
         setSelectedPaths(new Set([selectedPath]));
     }, [selectedPath]);
     useEffect(() => {
+        setNodes([]);
+        setRootName("");
+        setError("");
+        setLoading(Boolean(workspacePath.trim()));
+        setRefreshing(false);
+        cachedTreeRef.current = { workspacePath, hasNodes: false };
+    }, [workspacePath]);
+    useEffect(() => {
         let cancelled = false;
         async function load() {
             if (!workspacePath.trim()) {
                 setNodes([]);
                 setRootName("");
+                setLoading(false);
+                setRefreshing(false);
+                onTreeFilePathsChangeRef.current?.([]);
                 return;
             }
-            setLoading(true);
+            const hasCachedTree = cachedTreeRef.current.workspacePath === workspacePath &&
+                cachedTreeRef.current.hasNodes;
+            if (hasCachedTree)
+                setRefreshing(true);
+            else
+                setLoading(true);
             setError("");
             const result = await window.voidscribe.listWorkspaceTree();
             if (cancelled)
                 return;
             if (!result.ok) {
                 setError(result.error);
-                setNodes([]);
-                setRootName("");
+                if (!hasCachedTree) {
+                    setNodes([]);
+                    setRootName("");
+                    onTreeFilePathsChangeRef.current?.([]);
+                }
                 setLoading(false);
+                setRefreshing(false);
                 return;
             }
             setRootName(result.rootName);
             setNodes(result.nodes);
+            cachedTreeRef.current = { workspacePath, hasNodes: true };
+            onTreeFilePathsChangeRef.current?.(collectTreeFilePaths(result.nodes));
             setLoading(false);
+            setRefreshing(false);
         }
         void load();
         return () => {
@@ -451,7 +499,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
             }
         }
     }
-    if (loading) {
+    if (loading && nodes.length === 0) {
         return <p className="file-tree__status">{t(lang, "fileTreeLoading")}</p>;
     }
     if (error) {
@@ -514,7 +562,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
       </div>, document.body);
     const deleteDialogPortal = deleteTargets.length > 0 &&
         createPortal(<ConfirmDialog open title={t(lang, "deleteEntryTitle")} message={deleteMessage} confirmLabel={t(lang, "delete")} cancelLabel={t(lang, "cancel")} danger dontAskAgainLabel={t(lang, "deleteDontAskAgain")} dontAskAgain={dontAskDeleteAgain} onDontAskAgainChange={setDontAskDeleteAgain} onCancel={() => setDeleteTargets([])} onConfirm={() => void confirmDelete()}/>, document.body);
-    return (<div ref={treeRef} className="file-tree" tabIndex={-1} onMouseDown={handleTreeBackgroundMouseDown} onContextMenu={handleTreeContextMenu}>
+    return (<div ref={treeRef} className={`file-tree${refreshing ? " file-tree--refreshing" : ""}`} tabIndex={-1} onMouseDown={handleTreeBackgroundMouseDown} onContextMenu={handleTreeContextMenu}>
       <div className="file-tree__root" onContextMenu={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -524,7 +572,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
         {rootName.toUpperCase()}
       </div>
       <div className="file-tree__list" onMouseDown={handleTreeBackgroundMouseDown}>
-        {nodes.map((node) => (<TreeNode key={node.path} node={node} depth={0} selectedPaths={selectedPaths} expanded={expanded} onToggle={handleToggle} onItemClick={handleItemClick} onContextMenu={openContextMenu}/>))}
+        {nodes.map((node) => (<TreeNode key={node.path} node={node} depth={0} selectedPaths={selectedPaths} expanded={expanded} pendingPaths={pendingPaths ?? EMPTY_PATH_SET} errorPaths={errorPaths ?? EMPTY_PATH_SET} onToggle={handleToggle} onItemClick={handleItemClick} onContextMenu={openContextMenu}/>))}
       </div>
 
       {contextMenu ? (<div className="file-tree__menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu" onMouseDown={(event) => event.stopPropagation()}>
