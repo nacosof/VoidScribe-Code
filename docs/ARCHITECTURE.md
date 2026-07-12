@@ -12,7 +12,8 @@ Desktop open-source IDE with AI chat and agent for local workspace development.
 
 ```
 VoidScribe-Code/
-├── docs/                            # README, architecture, license
+├── README.md / README.ru.md         # Project overview (repo root)
+├── docs/                            # Architecture, license
 ├── electron/
 │   ├── main/
 │   │   ├── index.ts                 # Window, zoom, workspace watcher, IPC bootstrap

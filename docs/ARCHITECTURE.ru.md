@@ -12,7 +12,8 @@
 
 ```
 VoidScribe-Code/
-├── docs/                            # README, архитектура, лицензия
+├── README.md / README.ru.md         # Обзор проекта (корень репо)
+├── docs/                            # Архитектура, лицензия
 ├── electron/
 │   ├── main/
 │   │   ├── index.ts                 # Окно, zoom, workspace watcher, IPC bootstrap
