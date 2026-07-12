@@ -34,24 +34,29 @@ export function hasLintErrors(diagnostics: LintDiagnostic[]): boolean {
     return diagnostics.some((item) => item.severity === "error");
 }
 
-export async function lintFileContent(filePath: string, content: string): Promise<LintDiagnostic[]> {
+export async function lintFileContent(filePath: string, content: string, options?: { semantic?: boolean }): Promise<LintDiagnostic[]> {
     const strategy = getLintStrategy(filePath);
     const local = lintNonAsciiIdentifiers(content, strategy, filePath);
     if (!window.voidscribe?.lintWorkspaceFile) {
         return local;
     }
-    const result = await window.voidscribe.lintWorkspaceFile(filePath, content);
+    const result = await window.voidscribe.lintWorkspaceFile(filePath, content, options);
     const remote = result.ok ? result.diagnostics : [];
     return dedupeDiagnostics([...local, ...remote]);
 }
 
+function wantsSemanticAnalysis(filePath: string): boolean {
+    return /\.(tsx?|mts|cts|jsx?|mjs|cjs|py|pyw|pyi)$/i.test(filePath);
+}
+
 export function getEditorLintExtensions(filePath: string): Extension[] {
+    const semantic = wantsSemanticAnalysis(filePath);
     return [
         lintGutter(),
         linter(async (view) => {
             const content = view.state.doc.toString();
-            const merged = await lintFileContent(filePath, content);
+            const merged = await lintFileContent(filePath, content, { semantic });
             return merged.map((item) => toCodeMirrorDiagnostic(view.state.doc, item));
-        }, { delay: 400 }),
+        }, { delay: semantic ? 500 : 350 }),
     ];
 }

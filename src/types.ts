@@ -190,7 +190,9 @@ export type VoidScribeApi = {
     }): Promise<ApiResult<{
         models: string[];
     }>>;
-    lintWorkspaceFile(path: string, content: string): Promise<ApiResult<{
+    lintWorkspaceFile(path: string, content: string, options?: {
+        semantic?: boolean;
+    }): Promise<ApiResult<{
         diagnostics: LintDiagnostic[];
     }>>;
     pickWorkspace(): Promise<ApiResult<{

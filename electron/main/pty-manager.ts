@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { spawn, type ChildProcess } from "child_process";
 import type { BrowserWindow } from "electron";
 import type { IPty } from "node-pty";
+import { shellSpawnEnvForWorkspace } from "./python-env";
 type ShellMode = "pty" | "pipe" | "mirror";
 export type TerminalSessionInfo = {
     id: string;
@@ -65,7 +66,7 @@ function spawnNativeShell(session: TerminalSession): {
         cols: 80,
         rows: 24,
         cwd: session.cwd,
-        env: process.env as Record<string, string>,
+        env: shellSpawnEnvForWorkspace(session.cwd) as Record<string, string>,
         useConpty: process.platform === "win32",
     });
     session.shellMode = "pty";
@@ -93,7 +94,7 @@ function spawnPipeShell(session: TerminalSession): {
         const child = spawn(shell, args, {
             cwd: session.cwd,
             env: {
-                ...process.env,
+                ...shellSpawnEnvForWorkspace(session.cwd),
                 TERM: "xterm-256color",
                 COLORTERM: "truecolor",
             },

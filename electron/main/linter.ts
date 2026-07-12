@@ -8,22 +8,12 @@ import { promisify } from "util";
 import { app } from "electron";
 import { getLintStrategy, type LintStrategy } from "../../src/lib/language-registry";
 import { lintNonAsciiIdentifiers } from "../../src/lib/non-ascii-lint";
+import { lintTypeScriptSemantics } from "./typescript-lint";
+import { lintWithRuff } from "./ruff-lint";
+import { resolvePythonCommands } from "./python-env";
 import { resolveWorkspacePath } from "./workspace";
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
-const PYTHON_CANDIDATES: [
-    string,
-    string[]
-][] = process.platform === "win32"
-    ? [
-        ["py", ["-3"]],
-        ["python", []],
-        ["python3", []],
-    ]
-    : [
-        ["python3", []],
-        ["python", []],
-    ];
 export type LintSeverity = "error" | "warning" | "info" | "hint";
 export type LintDiagnostic = {
     line: number;
@@ -102,7 +92,7 @@ function esbuildLoader(filePath: string): "js" | "jsx" | "ts" | "tsx" {
         return "jsx";
     return "js";
 }
-function lintJavaScript(relativePath: string, content: string): LintDiagnostic[] {
+function lintJavaScriptSyntax(relativePath: string, content: string): LintDiagnostic[] {
     try {
         const esbuild = require("esbuild") as typeof import("esbuild");
         esbuild.transformSync(content, {
@@ -143,11 +133,24 @@ function lintJavaScript(relativePath: string, content: string): LintDiagnostic[]
         });
     }
 }
-function lintVue(content: string): LintDiagnostic[] {
+function lintJavaScript(relativePath: string, content: string, workspaceRoot: string, semantic = false): LintDiagnostic[] {
+    const syntax = lintJavaScriptSyntax(relativePath, content);
+    if (!semantic || syntax.some((item) => item.severity === "error")) {
+        return syntax;
+    }
+    try {
+        const typeDiagnostics = lintTypeScriptSemantics(workspaceRoot, relativePath, content);
+        return dedupeDiagnostics([...syntax, ...typeDiagnostics]);
+    }
+    catch {
+        return syntax;
+    }
+}
+function lintVue(content: string, workspaceRoot: string, semantic = false): LintDiagnostic[] {
     const scriptMatch = /<script\b[^>]*>([\s\S]*?)<\/script>/i.exec(content);
     if (!scriptMatch?.[1]?.trim())
         return lintHtml(content);
-    return lintJavaScript("component.vue", scriptMatch[1]);
+    return lintJavaScript("component.vue", scriptMatch[1], workspaceRoot, semantic);
 }
 function lintCss(relativePath: string, content: string): LintDiagnostic[] {
     try {
@@ -441,7 +444,7 @@ async function runPythonLint(content: string, absolutePath: string, workspaceRoo
     const env = { ...process.env, VOIDSCRIBE_WORKSPACE: workspaceRoot, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" };
     const scriptPath = getPythonLintScriptPath();
     try {
-        for (const [command, prefix] of PYTHON_CANDIDATES) {
+        for (const { command, prefix } of resolvePythonCommands(workspaceRoot)) {
             try {
                 const { stdout } = await execFileAsync(command, [...prefix, scriptPath, tempPath], {
                     env,
@@ -515,14 +518,14 @@ async function lintPowerShell(content: string): Promise<LintDiagnostic[]> {
         await unlink(tempPath).catch(() => undefined);
     }
 }
-async function lintByStrategy(strategy: LintStrategy, relativePath: string, content: string, absolutePath: string, workspaceRoot: string): Promise<LintDiagnostic[]> {
+async function lintByStrategy(strategy: LintStrategy, relativePath: string, content: string, absolutePath: string, workspaceRoot: string, semantic = false): Promise<LintDiagnostic[]> {
     switch (strategy) {
         case "json":
             return lintJson(content);
         case "javascript":
-            return lintJavaScript(relativePath, content);
+            return lintJavaScript(relativePath, content, workspaceRoot, semantic);
         case "vue":
-            return lintVue(content);
+            return lintVue(content, workspaceRoot, semantic);
         case "css":
             return lintCss(relativePath, content);
         case "html":
@@ -537,8 +540,13 @@ async function lintByStrategy(strategy: LintStrategy, relativePath: string, cont
             return lintDockerfile(content);
         case "graphql":
             return lintGraphql(content);
-        case "python":
-            return runPythonLint(content, absolutePath, workspaceRoot);
+        case "python": {
+            const basic = await runPythonLint(content, absolutePath, workspaceRoot);
+            if (!semantic)
+                return basic;
+            const ruff = await lintWithRuff(workspaceRoot, relativePath, content);
+            return dedupeDiagnostics([...basic, ...ruff]);
+        }
         case "rust":
             return runCompilerLint(content, "rs", [["rustc", ["--crate-type", "lib", "--edition", "2021"]]]);
         case "c":
@@ -607,7 +615,10 @@ async function lintByStrategy(strategy: LintStrategy, relativePath: string, cont
             return [];
     }
 }
-export async function lintWorkspaceFile(workspaceRoot: string, relativePath: string, content: string): Promise<{
+export type LintWorkspaceOptions = {
+    semantic?: boolean;
+};
+export async function lintWorkspaceFile(workspaceRoot: string, relativePath: string, content: string, options?: LintWorkspaceOptions): Promise<{
     ok: true;
     diagnostics: LintDiagnostic[];
 } | {
@@ -627,9 +638,10 @@ export async function lintWorkspaceFile(workspaceRoot: string, relativePath: str
             absolutePath = join(workspaceRoot, relativePath);
         }
         const nonAscii = lintNonAsciiIdentifiers(content, strategy, relativePath);
+        const semantic = options?.semantic === true;
         const diagnostics = dedupeDiagnostics([
             ...nonAscii,
-            ...(await lintByStrategy(strategy, relativePath, content, absolutePath, workspaceRoot)),
+            ...(await lintByStrategy(strategy, relativePath, content, absolutePath, workspaceRoot, semantic)),
         ]);
         return { ok: true, diagnostics };
     }

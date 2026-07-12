@@ -1,7 +1,8 @@
 import { spawn, execSync, type ChildProcess } from "child_process";
-import { resolveShellExecutable, shellSpawnEnv, isShellSpawnEnoent, shellSpawnEnoentMessage, } from "./shell-env";
+import { resolveShellExecutable, isShellSpawnEnoent, shellSpawnEnoentMessage, } from "./shell-env";
 import { WorkspaceError, assertWorkspaceRoot, resolveWorkspacePath, } from "./workspace";
 import { isProductionBuildCommand } from "./build-diagnostics";
+import { shellSpawnEnvForWorkspace } from "./python-env";
 import { formatDevServerPreviewNote, isDevServerCommand } from "./npm-project-cwd";
 
 export { isDevServerCommand } from "./npm-project-cwd";
@@ -148,7 +149,7 @@ async function runWorkspaceCommandBlocking(workspaceRoot: string, command: strin
         : prepared;
     const args = isWin ? ["-NoProfile", "-Command", psCommand] : ["-lc", prepared];
     return new Promise((resolvePromise, reject) => {
-        const spawnEnv = shellSpawnEnv();
+        const spawnEnv = shellSpawnEnvForWorkspace(workspaceRoot);
         if (isProductionBuildCommand(trimmed)) {
             spawnEnv.NODE_ENV = "production";
         }

@@ -44,10 +44,10 @@ function assertEntryName(name: string, label: string): string {
 }
 
 export function registerWorkspaceHandlers(ctx: IpcContext): void {
-    ipcMain.handle("workspace:lint", async (_e, path: string, content: string) => {
+    ipcMain.handle("workspace:lint", async (_e, path: string, content: string, options?: { semantic?: boolean }) => {
         try {
             const root = ctx.getWorkspacePath().trim() || tmpdir();
-            return ok(await lintWorkspaceFile(root, path, content));
+            return ok(await lintWorkspaceFile(root, path, content, options));
         }
         catch (err) {
             return fail(err);
