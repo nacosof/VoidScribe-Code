@@ -2,6 +2,7 @@ import { ChatModeSelector } from "@/components/ChatModeSelector";
 import { ModelSelector } from "@/components/ModelSelector";
 import { AgentChangesBar } from "@/components/AgentChangesBar";
 import { ComposerContextChips, handleComposerPaste } from "@/components/ComposerContextChips";
+import { chatContextRefFromPath, mergeContextRefs } from "@/lib/chat-context";
 import { t } from "@/lib/i18n";
 import type { ChatInteractionMode } from "@/lib/chat-modes";
 import type { AiSettings, ChatContextRef, ChatImage, PendingFileChange, UiLanguage } from "@/types";
@@ -18,6 +19,7 @@ type ChatComposerProps = {
     composerContextRefs: ChatContextRef[];
     streaming: boolean;
     composerSupportsVision: boolean;
+    activeEditorPath: string | null;
     sessionPending: PendingFileChange[];
     onComposerChange: (value: string) => void;
     onImagesChange: (images: ChatImage[]) => void;
@@ -44,6 +46,7 @@ export function ChatComposer({
     composerContextRefs,
     streaming,
     composerSupportsVision,
+    activeEditorPath,
     sessionPending,
     onComposerChange,
     onImagesChange,
@@ -58,6 +61,13 @@ export function ChatComposer({
     onOpenFile,
 }: ChatComposerProps) {
     const canSend = Boolean(composer.trim()) || composerImages.length > 0 || composerContextRefs.length > 0;
+    const canAttachCurrentFile = Boolean(activeEditorPath?.trim()) && !streaming;
+
+    function handleAttachCurrentFile() {
+        if (!activeEditorPath?.trim() || streaming)
+            return;
+        onContextRefsChange(mergeContextRefs(composerContextRefs, chatContextRefFromPath(activeEditorPath)));
+    }
 
     return (
         <div className="composer">
@@ -135,6 +145,21 @@ export function ChatComposer({
                         )}
                     </div>
                     <div className="composer__toolbar">
+                        {activeEditorPath ? (
+                            <button
+                                type="button"
+                                className="composer__attach-btn"
+                                disabled={!canAttachCurrentFile}
+                                onClick={handleAttachCurrentFile}
+                                title={t(lang, "attachCurrentFile")}
+                                aria-label={t(lang, "attachCurrentFile")}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                    <path d="M8 6h8M8 10h8M8 14h5" />
+                                    <rect x="5" y="4" width="14" height="16" rx="2" />
+                                </svg>
+                            </button>
+                        ) : null}
                         <ChatModeSelector
                             mode={mode}
                             hasWorkspace={hasWorkspace}

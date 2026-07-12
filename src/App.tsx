@@ -563,6 +563,7 @@ export function App() {
                     composerContextRefs={composerContextRefs}
                     streaming={Boolean(streaming)}
                     composerSupportsVision={composerSupportsVision}
+                    activeEditorPath={editor.activePath}
                     sessionPending={pending.sessionPending}
                     onComposerChange={setComposer}
                     onImagesChange={setComposerImages}

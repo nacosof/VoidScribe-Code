@@ -60,6 +60,10 @@ export function useChatSend({
             onWorkspaceError(t(lang, "chatModeNeedsWorkspace"));
             return;
         }
+        if (composerContextRefs.length > 0 && !workspaceOpen) {
+            onWorkspaceError(t(lang, "chatNeedsWorkspaceForFiles"));
+            return;
+        }
         if (mode === "agent" && (!activePreset || !isPresetReady(activePreset))) {
             onWorkspaceError(t(lang, "addKeyInSettings"));
             return;

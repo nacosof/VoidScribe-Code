@@ -1,13 +1,16 @@
 import type { ChatContextRef, ChatMessage } from "../../src/types";
+import type { ChatInteractionMode } from "../../src/lib/chat-modes";
 import { buildUserMessageContent } from "../../src/lib/chat-context";
 import { listWorkspaceDirectory, readWorkspaceFile } from "./workspace";
 const MAX_FILE_CHARS = 24000;
 const MAX_DIR_ENTRIES = 80;
-async function readContextFile(workspaceRoot: string, ref: ChatContextRef): Promise<string> {
+async function readContextFile(workspaceRoot: string, ref: ChatContextRef, mode: ChatInteractionMode): Promise<string> {
     try {
         const content = await readWorkspaceFile(workspaceRoot, ref.path);
         if (!content.trim()) {
-            return "(пустой файл — один write_file с полным content в поле JSON «content», read_file не нужен)";
+            return mode === "normal"
+                ? "(пустой файл)"
+                : "(пустой файл — один write_file с полным content в поле JSON «content», read_file не нужен)";
         }
         if (content.length <= MAX_FILE_CHARS)
             return content;
@@ -35,15 +38,15 @@ async function listContextDirectory(workspaceRoot: string, ref: ChatContextRef):
         return `[Не удалось прочитать папку: ${message}]`;
     }
 }
-export async function enrichUserMessageText(message: ChatMessage, workspaceRoot: string): Promise<string> {
+export async function enrichUserMessageText(message: ChatMessage, workspaceRoot: string, mode: ChatInteractionMode = "agent"): Promise<string> {
     const refs = message.contextRefs ?? [];
-    const base = buildUserMessageContent(message.content, refs);
+    const base = buildUserMessageContent(message.content, refs, { mode });
     if (!refs.length || !workspaceRoot.trim())
         return base;
     const blocks: string[] = [base];
     for (const ref of refs) {
         if (ref.kind === "file") {
-            const body = await readContextFile(workspaceRoot, ref);
+            const body = await readContextFile(workspaceRoot, ref, mode);
             blocks.push(`\n\n--- ${ref.path} ---\n${body}`);
         }
         else {
@@ -53,13 +56,14 @@ export async function enrichUserMessageText(message: ChatMessage, workspaceRoot:
     }
     return blocks.join("");
 }
-export async function enrichChatHistory(history: ChatMessage[], workspaceRoot: string): Promise<ChatMessage[]> {
+export async function enrichChatHistory(history: ChatMessage[], workspaceRoot: string, defaultMode: ChatInteractionMode = "agent"): Promise<ChatMessage[]> {
     if (!workspaceRoot.trim())
         return history;
     return Promise.all(history.map(async (message) => {
         if (message.role !== "user" || !message.contextRefs?.length)
             return message;
-        const content = await enrichUserMessageText(message, workspaceRoot);
+        const mode = message.mode ?? defaultMode;
+        const content = await enrichUserMessageText(message, workspaceRoot, mode);
         return { ...message, content, contextRefs: undefined };
     }));
 }

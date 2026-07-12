@@ -76,8 +76,13 @@ export function registerChatHandlers(ctx: IpcContext): void {
         const signal = beginChatRequest(input.requestId);
         try {
             const settings = getSettings();
-            const workspace = assertWorkspaceRoot(ctx.getWorkspacePath());
-            const apiMessages = await enrichChatHistory(input.messages, workspace);
+            const mode = input.mode ?? "normal";
+            const workspace = ctx.getWorkspacePath().trim();
+            const needsWorkspace = mode === "agent" || input.messages.some((message) => message.role === "user" && (message.contextRefs?.length ?? 0) > 0);
+            if (needsWorkspace) {
+                assertWorkspaceRoot(workspace);
+            }
+            const apiMessages = await enrichChatHistory(input.messages, workspace, mode);
             const onTextDelta = (delta: string) => ctx.send("chat:delta", { requestId: input.requestId, delta });
             const onEvent = (event: AgentToolEvent) => ctx.send("agent:event", { requestId: input.requestId, event });
             const onTranscript = (turns: unknown) => ctx.send("agent:transcript", { requestId: input.requestId, turns });
@@ -96,7 +101,7 @@ export function registerChatHandlers(ctx: IpcContext): void {
             else {
                 await streamAgentChat({
                     messages: apiMessages,
-                    workspaceRoot: workspace,
+                    workspaceRoot: assertWorkspaceRoot(workspace),
                     mode: input.mode,
                     editorContext: input.editorContext,
                     settings,

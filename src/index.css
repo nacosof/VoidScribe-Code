@@ -3579,6 +3579,30 @@ body.terminal-panel--resizing-body .terminal-panel {
   margin-top: 8px;
 }
 
+.composer__attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted, var(--stardust-gray));
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.composer__attach-btn:hover:not(:disabled) {
+  color: var(--text-body);
+  border-color: var(--border-strong, rgba(255, 255, 255, 0.16));
+}
+
+.composer__attach-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 
 .app-dropdown__option {
   display: flex;

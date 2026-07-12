@@ -1,32 +1,53 @@
 import type { ChatContextRef, UiLanguage } from "@/types";
+import type { ChatInteractionMode } from "@/lib/chat-modes";
 export const CHAT_ENTRY_DRAG_MIME = "application/voidscribe-entry";
+export type BuildUserMessageContentOptions = {
+    lang?: UiLanguage;
+    mode?: ChatInteractionMode;
+};
 function normalizePath(path: string): string {
     return path.replace(/\\/g, "/").replace(/\/+$/, "");
 }
 function userWantsFileChange(text: string): boolean {
     return /(?:передел|измен|сделай|добав|убери|обратно|исправ|помен|convert|change|redo|rewrite|update|fix|rest\s*api|fast\s*api)/i.test(text);
 }
-export function buildUserMessageContent(text: string, refs: ChatContextRef[], lang: UiLanguage = "ru"): string {
+function buildContextPrefix(ref: ChatContextRef, body: string, lang: UiLanguage, mode: ChatInteractionMode): string {
+    if (mode === "normal") {
+        if (lang === "en") {
+            return ref.kind === "directory"
+                ? `[Context — folder: ${ref.path}. Listing is attached below. Explain and advise in text; do not edit files unless the user explicitly asks.]`
+                : `[Context — file: ${ref.path}. Full content is attached below. Explain errors, suggest fixes in text. Do not edit the file unless the user explicitly asks.]`;
+        }
+        return ref.kind === "directory"
+            ? `[Контекст — папка: ${ref.path}. Список файлов приложен ниже. Объясняй и подсказывай текстом; файлы не меняй без явной просьбы.]`
+            : `[Контекст — файл: ${ref.path}. Содержимое приложено ниже. Объясни ошибки, подскажи исправления текстом. Файл не редактируй, если пользователь явно не просит.]`;
+    }
+    if (lang === "en") {
+        return ref.kind === "directory"
+            ? `[Context — folder: ${ref.path}. Folder listing is attached below.]`
+            : userWantsFileChange(body)
+                ? `[Context — file: ${ref.path}. Content below is CURRENT file. User asks to CHANGE it — write_file to «${ref.path}» with FULL new code in JSON "content". New content MUST differ from below; implement what user asked.]`
+                : `[Context — file: ${ref.path}. Content is attached below — do NOT read_file. ONE write_file to «${ref.path}» with full content in JSON "content" field. Empty file = write complete code.]`;
+    }
+    return ref.kind === "directory"
+        ? `[Контекст — папка: ${ref.path}. Содержимое папки приложено ниже.]`
+        : userWantsFileChange(body)
+            ? `[Контекст — файл: ${ref.path}. Ниже ТЕКУЩИЙ код. Пользователь просит ИЗМЕНИТЬ — write_file на «${ref.path}» с полным НОВЫМ content в JSON. Код ДОЛЖЕН отличаться от текста ниже; сделай то, что просят.]`
+            : `[Контекст — файл: ${ref.path}. Содержимое уже ниже — read_file НЕ нужен. Один write_file на «${ref.path}» с полным content в JSON. Пустой файл = напиши весь код целиком.]`;
+}
+export function buildUserMessageContent(text: string, refs: ChatContextRef[], options: BuildUserMessageContentOptions = {}): string {
+    const lang = options.lang ?? "ru";
+    const mode = options.mode ?? "agent";
     const body = text.trim();
     if (!refs.length)
         return body;
-    const prefix = refs
-        .map((ref) => {
-        if (lang === "en") {
-            return ref.kind === "directory"
-                ? `[Context — folder: ${ref.path}. Folder listing is attached below.]`
-                : userWantsFileChange(body)
-                    ? `[Context — file: ${ref.path}. Content below is CURRENT file. User asks to CHANGE it — write_file to «${ref.path}» with FULL new code in JSON "content". New content MUST differ from below; implement what user asked.]`
-                    : `[Context — file: ${ref.path}. Content is attached below — do NOT read_file. ONE write_file to «${ref.path}» with full content in JSON "content" field. Empty file = write complete code.]`;
-        }
-        return ref.kind === "directory"
-            ? `[Контекст — папка: ${ref.path}. Содержимое папки приложено ниже.]`
-            : userWantsFileChange(body)
-                ? `[Контекст — файл: ${ref.path}. Ниже ТЕКУЩИЙ код. Пользователь просит ИЗМЕНИТЬ — write_file на «${ref.path}» с полным НОВЫМ content в JSON. Код ДОЛЖЕН отличаться от текста ниже; сделай то, что просят.]`
-                : `[Контекст — файл: ${ref.path}. Содержимое уже ниже — read_file НЕ нужен. Один write_file на «${ref.path}» с полным content в JSON. Пустой файл = напиши весь код целиком.]`;
-    })
-        .join("\n");
+    const prefix = refs.map((ref) => buildContextPrefix(ref, body, lang, mode)).join("\n");
     return body ? `${prefix}\n\n${body}` : prefix;
+}
+export function chatContextRefFromPath(path: string, kind: ChatContextRef["kind"] = "file"): ChatContextRef {
+    const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
+    const name = normalized.split("/").pop() ?? normalized;
+    return { kind, path: normalized, name };
 }
 export function readDraggedChatEntry(dataTransfer: DataTransfer): ChatContextRef | null {
     const raw = dataTransfer.getData(CHAT_ENTRY_DRAG_MIME);

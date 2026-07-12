@@ -1,21 +1,28 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { ChatMessage } from "../../src/types";
 import type { UserAiProviderId } from "../../src/lib/providers";
-import { modelSupportsVision } from "../../src/lib/model-vision";
+import { buildVisionUnsupportedNote, modelSupportsVision } from "../../src/lib/model-vision";
 import { buildUserMessageContent } from "../../src/lib/chat-context";
 export type ChatVisionOptions = {
     provider?: UserAiProviderId;
     model?: string;
 };
 export function chatHistoryToOpenAiMessages(history: ChatMessage[], options?: ChatVisionOptions): ChatCompletionMessageParam[] {
-    const supportsVision = options?.provider && options?.model ? modelSupportsVision(options.provider, options.model) : false;
+    const supportsVision = options?.provider && options?.model
+        ? modelSupportsVision(options.provider, options.model)
+        : false;
     return history
         .filter((message) => message.role !== "assistant" || message.content.trim())
         .map((message) => {
         if (message.role === "assistant")
             return { role: "assistant", content: message.content } as ChatCompletionMessageParam;
-        const text = buildUserMessageContent(message.content, message.contextRefs ?? []);
+        const mode = message.mode ?? "normal";
+        let text = buildUserMessageContent(message.content, message.contextRefs ?? [], { mode });
         const images = message.images ?? [];
+        if (images.length && !supportsVision && options?.provider) {
+            const note = buildVisionUnsupportedNote(images.length, options.provider);
+            text = text.trim() ? `${note}\n\n${text}` : note;
+        }
         if (images.length && supportsVision) {
             const body = text.trim() || " ";
             return {
