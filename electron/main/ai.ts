@@ -90,8 +90,7 @@ export async function streamChatCompletion(input: {
             content?: string | null;
             reasoning_content?: string | null;
         } | undefined;
-        const text = (typeof delta?.content === "string" ? delta.content : "") ||
-            (typeof delta?.reasoning_content === "string" ? delta.reasoning_content : "");
+        const text = typeof delta?.content === "string" ? delta.content : "";
         if (text)
             input.onTextDelta(text);
     }

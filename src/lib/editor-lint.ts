@@ -57,6 +57,6 @@ export function getEditorLintExtensions(filePath: string): Extension[] {
             const content = view.state.doc.toString();
             const merged = await lintFileContent(filePath, content, { semantic });
             return merged.map((item) => toCodeMirrorDiagnostic(view.state.doc, item));
-        }, { delay: semantic ? 500 : 350 }),
+        }, { delay: semantic ? 1200 : 450 }),
     ];
 }

@@ -4,6 +4,7 @@ import { AgentChangesBar } from "@/components/AgentChangesBar";
 import { ComposerContextChips, handleComposerPaste } from "@/components/ComposerContextChips";
 import { chatContextRefFromPath, mergeContextRefs } from "@/lib/chat-context";
 import { t } from "@/lib/i18n";
+import type { RefObject } from "react";
 import type { ChatInteractionMode } from "@/lib/chat-modes";
 import type { AiSettings, ChatContextRef, ChatImage, PendingFileChange, UiLanguage } from "@/types";
 
@@ -20,6 +21,7 @@ type ChatComposerProps = {
     streaming: boolean;
     composerSupportsVision: boolean;
     activeEditorPath: string | null;
+    composerInputRef?: RefObject<HTMLTextAreaElement | null>;
     sessionPending: PendingFileChange[];
     onComposerChange: (value: string) => void;
     onImagesChange: (images: ChatImage[]) => void;
@@ -47,6 +49,7 @@ export function ChatComposer({
     streaming,
     composerSupportsVision,
     activeEditorPath,
+    composerInputRef,
     sessionPending,
     onComposerChange,
     onImagesChange,
@@ -102,6 +105,7 @@ export function ChatComposer({
                 >
                     <div className="composer__box">
                         <textarea
+                            ref={composerInputRef}
                             className="composer__input"
                             value={composer}
                             onChange={(e) => onComposerChange(e.target.value)}

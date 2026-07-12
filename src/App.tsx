@@ -19,10 +19,12 @@ import { useChatSessions } from "@/hooks/useChatSessions";
 import { applyTheme } from "@/lib/theme-vars";
 import { buildTitleBarFileMenu } from "@/lib/file-menu";
 import { t } from "@/lib/i18n";
-import { getReadyPresets } from "@/lib/agent-presets";
+import { getReadyPresets, isPresetReady } from "@/lib/agent-presets";
 import { modelSupportsVision } from "@/lib/model-vision";
 import { loadEditorTabsForWorkspace, saveEditorTabsForWorkspace, } from "@/lib/persisted-ui-state";
 import type { AgentEditorContext, AiSettings, LocalProviderStatus, SettingsSavePatch, UiLanguage, UiTheme, } from "@/types";
+import { chatContextRefFromPath, mergeContextRefs } from "@/lib/chat-context";
+import { formatSelectionForChat, type EditorSelectionInfo } from "@/lib/editor-selection";
 import { normalizeChatMode, type ChatInteractionMode } from "@/lib/chat-modes";
 const DEFAULT_SETTINGS: AiSettings = {
     activePresetId: "",
@@ -84,6 +86,7 @@ export function App() {
     const restoringTabsRef = useRef(false);
     const [isRestoringTabs, setIsRestoringTabs] = useState(false);
     const getActiveEditorContentRef = useRef<(() => string | null) | null>(null);
+    const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
     const [unsavedClose, setUnsavedClose] = useState<{
         tabId: string;
         content: string;
@@ -189,6 +192,17 @@ export function App() {
     const registerActiveEditorContent = useCallback((getter: () => string | null) => {
         getActiveEditorContentRef.current = getter;
     }, []);
+    const handleAddSelectionToChat = useCallback((selection: EditorSelectionInfo) => {
+        if (!isChatLayout)
+            setChatOpen(true);
+        if (selection.path.trim() && workspacePath.trim()) {
+            setComposerContextRefs((refs) => mergeContextRefs(refs, chatContextRefFromPath(selection.path)));
+        }
+        const block = formatSelectionForChat(selection, lang);
+        setComposer((prev) => (prev.trim() ? `${prev.trim()}\n\n${block}` : block));
+        requestAnimationFrame(() => composerInputRef.current?.focus());
+    }, [isChatLayout, lang, workspacePath]);
+    const aiReady = Boolean(activePreset && isPresetReady(activePreset));
     const handleCloseTab = useCallback((tabId: string) => {
         const tab = editor.tabs.find((item) => item.id === tabId);
         if (!tab)
@@ -528,7 +542,7 @@ export function App() {
             {!isChatLayout ? (<section className="editor-workspace__main">
               <EditorTabsBar tabs={editor.tabs} activeId={editor.activeId} setActiveId={editor.setActiveId} closeTab={handleCloseTab} titleForPath={(path) => editor.buildEditorTabTitle(path, editor.tabs.map((tab) => tab.path))}/>
               <div className="editor-workspace__editor">
-                <CodeEditorPanel tab={editor.activeTab} lang={lang} agentDiffActive={Boolean(pending.activeAgentPending)} agentDiffBaseline={pending.activeAgentPending?.previousContent ?? null} agentDiffAfter={pending.activeAgentPending?.newContent ?? null} onAgentDiffUndo={() => {
+                <CodeEditorPanel tab={editor.activeTab} lang={lang} aiReady={aiReady} agentDiffActive={Boolean(pending.activeAgentPending)} agentDiffBaseline={pending.activeAgentPending?.previousContent ?? null} agentDiffAfter={pending.activeAgentPending?.newContent ?? null} onAddSelectionToChat={handleAddSelectionToChat} onAgentDiffUndo={() => {
                 if (pending.activeAgentPending)
                     void pending.undoPendingChange(pending.activeAgentPending);
             }} onAgentDiffKeep={() => {
@@ -564,6 +578,7 @@ export function App() {
                     streaming={Boolean(streaming)}
                     composerSupportsVision={composerSupportsVision}
                     activeEditorPath={editor.activePath}
+                    composerInputRef={composerInputRef}
                     sessionPending={pending.sessionPending}
                     onComposerChange={setComposer}
                     onImagesChange={setComposerImages}
