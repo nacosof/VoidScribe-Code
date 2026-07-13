@@ -42,7 +42,7 @@ export const voidscribeEditorTheme = EditorView.theme({
         minHeight: "0",
         backgroundColor: "var(--abyss-gray, #0b0d13)",
         color: "#d8dee9",
-        fontSize: "16px",
+        fontSize: "20px",
     },
     ".cm-scroller": {
         fontFamily: '"JetBrains Mono", ui-monospace, monospace',
@@ -54,7 +54,7 @@ export const voidscribeEditorTheme = EditorView.theme({
     },
     ".cm-content": {
         fontFamily: '"JetBrains Mono", ui-monospace, monospace',
-        fontSize: "16px",
+        fontSize: "20px",
         lineHeight: "1.4667",
         caretColor: "#e6e9f0",
     },
@@ -95,7 +95,7 @@ export const voidscribeEditorTheme = EditorView.theme({
         alignItems: "center",
         justifyContent: "center",
         width: "14px",
-        fontSize: "14px",
+        fontSize: "19px",
         lineHeight: "1",
         color: "rgba(190, 198, 214, 0.95)",
         cursor: "pointer",
