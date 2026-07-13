@@ -353,6 +353,14 @@ export function App() {
     }, [workspacePath, editor.tabs, editor.activePath, isRestoringTabs]);
     useEffect(() => window.voidscribe.onWorkspaceChanged(refreshTree), [refreshTree]);
     useEffect(() => {
+        return window.voidscribe.onWorkspaceOpened(async (payload) => {
+            setWorkspacePath(payload.workspacePath);
+            setRecentWorkspaces(payload.recentWorkspaces);
+            refreshTree();
+            await restoreWorkspaceTabs(payload.workspacePath, payload.filePath);
+        });
+    }, [refreshTree, restoreWorkspaceTabs]);
+    useEffect(() => {
         function onMouseMove(event: MouseEvent) {
             if (!resizeRef.current)
                 return;
@@ -430,6 +438,15 @@ export function App() {
         onOpenFile: () => void pickWorkspaceFile(),
         onOpenRecent: (path) => void openRecentWorkspace(path),
     }), [openRecentWorkspace, pickWorkspace, pickWorkspaceFile]);
+    const titleBarCenter = useMemo(() => {
+        const active = editor.activePath?.trim();
+        if (active)
+            return active.split(/[/\\]/).pop() ?? active;
+        const workspace = workspacePath.trim();
+        if (workspace)
+            return workspace.split(/[/\\]/).pop() ?? workspace;
+        return undefined;
+    }, [editor.activePath, workspacePath]);
     const handleSelectPreset = useCallback(async (presetId: string) => {
         await saveSettings({ activePresetId: presetId });
     }, [saveSettings]);
@@ -519,7 +536,7 @@ export function App() {
     }
     if (view === "settings") {
         return (<div className="app-frame">
-        <TitleBar lang={lang} recentWorkspaces={recentWorkspaces} fileMenuItems={fileMenuItems} settingsActive onOpenSettings={() => setView("ide")} onRequestClose={() => void window.voidscribe.windowClose()}/>
+        <TitleBar lang={lang} recentWorkspaces={recentWorkspaces} fileMenuItems={fileMenuItems} centerTitle={titleBarCenter} settingsActive onOpenSettings={() => setView("ide")} onRequestClose={() => void window.voidscribe.windowClose()}/>
         <SettingsScreen settings={settings} lang={lang} localDiscovery={localDiscovery} providerModels={providerModels} onBack={() => setView("ide")} onChange={(patch) => setSettings((prev) => ({ ...prev, ...patch }))} onSave={saveSettings} onRefreshModels={refreshProviderModels} onDiscoverLocal={async () => {
                 const result = await window.voidscribe.discoverLocalProviders();
                 if (result.ok)
@@ -528,7 +545,7 @@ export function App() {
       </div>);
     }
     return (<div className="app-frame">
-      <TitleBar lang={lang} recentWorkspaces={recentWorkspaces} fileMenuItems={fileMenuItems} sidebarOpen={sidebarOpen} chatOpen={chatOpen} onToggleSidebar={isChatLayout ? undefined : () => setSidebarOpen((open) => !open)} onToggleChat={isChatLayout ? undefined : handleToggleChat} terminalOpen={terminalOpen} onToggleTerminal={() => setTerminalOpen((open) => !open)} onOpenSettings={() => setView("settings")} onRequestClose={() => void window.voidscribe.windowClose()}/>
+      <TitleBar lang={lang} recentWorkspaces={recentWorkspaces} fileMenuItems={fileMenuItems} centerTitle={titleBarCenter} sidebarOpen={sidebarOpen} chatOpen={chatOpen} onToggleSidebar={isChatLayout ? undefined : () => setSidebarOpen((open) => !open)} onToggleChat={isChatLayout ? undefined : handleToggleChat} terminalOpen={terminalOpen} onToggleTerminal={() => setTerminalOpen((open) => !open)} onOpenSettings={() => setView("settings")} onRequestClose={() => void window.voidscribe.windowClose()}/>
       <div className={shellClass}>
         {!isChatLayout ? (<div className="sidebar-panel" style={{ width: sidebarOpen ? sidebarWidth : 0 }}>
           <Sidebar workspacePath={workspacePath} selectedPath={editor.activePath} refreshKey={treeRefreshKey} lang={lang} pendingPaths={pending.workspacePendingPaths} errorPaths={fileTreeErrorPaths} onTreeFilePathsChange={setTreeFilePaths} onOpenFile={(path) => void openEditorFile(path)} onRefresh={refreshTreeNow} onEntriesDeleted={(entries) => editor.removeTabsForDeletedEntries(entries)}/>

@@ -302,8 +302,16 @@ export type VoidScribeApi = {
     }>>;
     windowClose(): Promise<ApiResult>;
     windowIsMaximized(): Promise<boolean>;
+    windowIsFullScreen(): Promise<boolean>;
     onWindowMaximized(callback: (maximized: boolean) => void): () => void;
+    onWindowFullScreen(callback: (fullScreen: boolean) => void): () => void;
     hasCustomTitleBar: boolean;
+    hasMacTrafficLights: boolean;
+    onWorkspaceOpened(callback: (payload: {
+        workspacePath: string;
+        recentWorkspaces: string[];
+        filePath?: string;
+    }) => void): () => void;
     onWorkspaceChanged(callback: () => void): () => void;
     onChatDelta(callback: (payload: {
         requestId: string;

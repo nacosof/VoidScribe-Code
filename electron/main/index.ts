@@ -7,6 +7,17 @@ import { bindPtyWindow } from "./pty-manager";
 import { restartWorkspaceWatcher, stopWorkspaceWatcher } from "./workspace-watcher";
 import { store } from "./store";
 import { registerAllIpcHandlers } from "./ipc";
+import { setupMacAppMenu, refreshMacAppMenu } from "./app-menu";
+
+const APP_NAME = "VoidScribe Code";
+
+if (process.platform === "darwin") {
+    app.setName(APP_NAME);
+    app.setAboutPanelOptions({
+        applicationName: APP_NAME,
+        applicationVersion: app.getVersion(),
+    });
+}
 
 let mainWindow: BrowserWindow | null = null;
 let workspacePath = store.get("workspacePath") || "";
@@ -58,13 +69,21 @@ function preloadScriptPath(): string {
 
 function createWindow(): void {
     const icon = resolveAppIcon();
+    const isMac = process.platform === "darwin";
     mainWindow = new BrowserWindow({
         width: 1360,
         height: 860,
         minWidth: 940,
         minHeight: 640,
-        frame: false,
-        title: "VoidScribe Code",
+        ...(isMac
+            ? {
+                titleBarStyle: "hiddenInset",
+                trafficLightPosition: { x: 14, y: 12 },
+            }
+            : {
+                frame: false,
+            }),
+        title: APP_NAME,
         backgroundColor: "#030408",
         icon: icon.isEmpty() ? undefined : icon,
         show: false,
@@ -74,10 +93,22 @@ function createWindow(): void {
             contextIsolation: true,
         },
     });
-    mainWindow.once("ready-to-show", () => mainWindow?.show());
+    mainWindow.once("ready-to-show", () => {
+        mainWindow?.show();
+        if (isMac)
+            refreshMacAppMenu();
+    });
     bindPtyWindow(mainWindow);
     mainWindow.on("maximize", () => send("window:maximized", true));
     mainWindow.on("unmaximize", () => send("window:maximized", false));
+    mainWindow.on("enter-full-screen", () => {
+        send("window:fullscreen", true);
+        refreshMacAppMenu();
+    });
+    mainWindow.on("leave-full-screen", () => {
+        send("window:fullscreen", false);
+        refreshMacAppMenu();
+    });
     if (is.dev && process.env.ELECTRON_RENDERER_URL) {
         mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
     }
@@ -119,11 +150,23 @@ app.whenReady().then(() => {
     if (process.platform === "win32") {
         app.setAppUserModelId("com.voidscribe.code");
     }
+    if (process.platform === "darwin") {
+        app.setName(APP_NAME);
+    }
     const icon = resolveAppIcon();
     if (!icon.isEmpty()) {
         app.dock?.setIcon(icon);
     }
     registerAllIpcHandlers({
+        getMainWindow: () => mainWindow,
+        getWorkspacePath: () => workspacePath,
+        setWorkspacePath: (path) => {
+            workspacePath = path;
+        },
+        send,
+        applyZoomLevel,
+    });
+    setupMacAppMenu({
         getMainWindow: () => mainWindow,
         getWorkspacePath: () => workspacePath,
         setWorkspacePath: (path) => {

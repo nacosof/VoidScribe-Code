@@ -26,6 +26,8 @@ export function registerWindowHandlers(ctx: IpcContext): void {
 
     ipcMain.handle("window:isMaximized", () => ctx.getMainWindow()?.isMaximized() ?? false);
 
+    ipcMain.handle("window:isFullScreen", () => ctx.getMainWindow()?.isFullScreen() ?? false);
+
     ipcMain.handle("window:getZoom", () => ok({ level: ctx.getMainWindow()?.webContents.getZoomLevel() ?? 0 }));
 
     ipcMain.handle("window:adjustZoom", (_e, delta: number) => {

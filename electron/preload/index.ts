@@ -66,12 +66,28 @@ const api: VoidScribeApi = {
     windowToggleMaximize: () => ipcRenderer.invoke("window:toggleMaximize"),
     windowClose: () => ipcRenderer.invoke("window:close"),
     windowIsMaximized: () => ipcRenderer.invoke("window:isMaximized"),
+    windowIsFullScreen: () => ipcRenderer.invoke("window:isFullScreen"),
     onWindowMaximized: (callback) => {
         const listener = (_: unknown, maximized: boolean) => callback(maximized);
         ipcRenderer.on("window:maximized", listener);
         return () => ipcRenderer.removeListener("window:maximized", listener);
     },
+    onWindowFullScreen: (callback) => {
+        const listener = (_: unknown, fullScreen: boolean) => callback(fullScreen);
+        ipcRenderer.on("window:fullscreen", listener);
+        return () => ipcRenderer.removeListener("window:fullscreen", listener);
+    },
     hasCustomTitleBar: isWin,
+    hasMacTrafficLights: process.platform === "darwin",
+    onWorkspaceOpened: (callback) => {
+        const listener = (_: unknown, payload: {
+            workspacePath: string;
+            recentWorkspaces: string[];
+            filePath?: string;
+        }) => callback(payload);
+        ipcRenderer.on("workspace:opened", listener);
+        return () => ipcRenderer.removeListener("workspace:opened", listener);
+    },
     onWorkspaceChanged: (callback) => {
         const listener = () => callback();
         ipcRenderer.on("workspace:changed", listener);

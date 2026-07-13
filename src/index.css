@@ -301,6 +301,49 @@ button {
   user-select: none;
 }
 
+.titlebar--mac {
+  position: relative;
+  padding-left: 68px;
+}
+
+.titlebar--mac-fullscreen {
+  padding-left: 8px;
+}
+
+.titlebar__mac-leading {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  flex-shrink: 0;
+  margin-left: -10px;
+}
+
+.titlebar__btn--sidebar {
+  width: 32px;
+  flex-shrink: 0;
+}
+
+.titlebar__btn--sidebar-mac {
+  transform: translateY(3px);
+}
+
+.titlebar__center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: min(46vw, 420px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--pale-nebula);
+  pointer-events: none;
+  opacity: 0.92;
+}
+
 .titlebar__brand {
   justify-self: start;
   display: flex;

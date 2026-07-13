@@ -1,8 +1,27 @@
 import { randomUUID } from "crypto";
 import { spawn, type ChildProcess } from "child_process";
+import { chmodSync, existsSync } from "fs";
+import { dirname, join } from "path";
+import { createRequire } from "module";
 import type { BrowserWindow } from "electron";
 import type { IPty } from "node-pty";
 import { shellSpawnEnvForWorkspace } from "./python-env";
+
+const require = createRequire(import.meta.url);
+
+function ensureNodePtySpawnHelperExecutable(): void {
+    if (process.platform !== "darwin")
+        return;
+    const arch = process.arch === "arm64" ? "darwin-arm64" : "darwin-x64";
+    const helper = join(dirname(require.resolve("node-pty/package.json")), "prebuilds", arch, "spawn-helper");
+    if (!existsSync(helper))
+        return;
+    try {
+        chmodSync(helper, 0o755);
+    }
+    catch {
+    }
+}
 type ShellMode = "pty" | "pipe" | "mirror";
 export type TerminalSessionInfo = {
     id: string;
@@ -56,6 +75,7 @@ function spawnNativeShell(session: TerminalSession): {
     ok: false;
     error: string;
 } {
+    ensureNodePtySpawnHelperExecutable();
     const pty = require("node-pty") as typeof import("node-pty");
     const shell = process.platform === "win32"
         ? "powershell.exe"

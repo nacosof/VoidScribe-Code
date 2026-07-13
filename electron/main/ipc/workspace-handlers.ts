@@ -14,21 +14,20 @@ import {
     writeWorkspaceFile,
     WorkspaceError,
 } from "../workspace";
-import { restartWorkspaceWatcher } from "../workspace-watcher";
 import { lintWorkspaceFile } from "../linter";
 import { store } from "../store";
 import type { IpcContext } from "./context";
 import { fail, ok, pushRecentWorkspace } from "./context";
+import { assignWorkspaceSession } from "../workspace-session";
+import { refreshMacAppMenu } from "../app-menu";
 
 function currentWorkspace(ctx: IpcContext): string {
     return assertWorkspaceRoot(ctx.getWorkspacePath());
 }
 
 function assignWorkspace(ctx: IpcContext, path: string): string[] {
-    ctx.setWorkspacePath(path);
-    store.set("workspacePath", path);
-    const recent = pushRecentWorkspace(path);
-    restartWorkspaceWatcher(path);
+    const recent = assignWorkspaceSession(ctx, path);
+    refreshMacAppMenu();
     return recent;
 }
 

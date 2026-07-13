@@ -1,5 +1,6 @@
 {
   "name": "voidscribe-code",
+  "productName": "VoidScribe Code",
   "version": "0.1.0",
   "license": "MIT",
   "private": true,
@@ -9,7 +10,8 @@
     "dev": "electron-vite dev",
     "dev:first-run": "node scripts/reset-onboarding.mjs && electron-vite dev",
     "build": "tsc --noEmit && electron-vite build",
-    "preview": "electron-vite preview"
+    "preview": "electron-vite preview",
+    "postinstall": "node scripts/fix-node-pty-perms.mjs && node scripts/fix-electron-app-name.mjs"
   },
   "dependencies": {
     "@cerebras/cerebras_cloud_sdk": "^1.64.1",
