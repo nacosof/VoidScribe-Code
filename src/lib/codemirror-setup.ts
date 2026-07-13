@@ -36,6 +36,11 @@ import { tags as t } from "@lezer/highlight";
 import { keymap, scrollPastEnd } from "@codemirror/view";
 import { EditorView } from "@codemirror/view";
 import { getHighlightMode, type HighlightMode } from "./language-registry";
+
+const isMacEditor = typeof window !== "undefined" && window.voidscribe?.hasMacTrafficLights === true;
+const editorFontSize = isMacEditor ? "15px" : "20px";
+const foldGutterFontSize = isMacEditor ? "14px" : "19px";
+
 export const voidscribeEditorTheme = EditorView.theme({
     "&": {
         height: "100%",
@@ -44,7 +49,7 @@ export const voidscribeEditorTheme = EditorView.theme({
         minHeight: "0",
         backgroundColor: "var(--abyss-gray, #0b0d13)",
         color: "#d8dee9",
-        fontSize: "20px",
+        fontSize: editorFontSize,
     },
     ".cm-scroller": {
         fontFamily: '"JetBrains Mono", ui-monospace, monospace',
@@ -56,7 +61,7 @@ export const voidscribeEditorTheme = EditorView.theme({
     },
     ".cm-content": {
         fontFamily: '"JetBrains Mono", ui-monospace, monospace',
-        fontSize: "20px",
+        fontSize: editorFontSize,
         lineHeight: "1.4667",
         caretColor: "#e6e9f0",
     },
@@ -97,7 +102,7 @@ export const voidscribeEditorTheme = EditorView.theme({
         alignItems: "center",
         justifyContent: "center",
         width: "14px",
-        fontSize: "19px",
+        fontSize: foldGutterFontSize,
         lineHeight: "1",
         color: "rgba(190, 198, 214, 0.95)",
         cursor: "pointer",

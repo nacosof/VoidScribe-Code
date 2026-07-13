@@ -21,6 +21,23 @@ const FALLBACK_PYTHON: PythonCommand[] = process.platform === "win32"
         { command: "python", prefix: [] },
     ];
 
+function discoverVersionedPythonCommands(): PythonCommand[] {
+    if (process.platform === "win32")
+        return [];
+    const commands: PythonCommand[] = [];
+    const binDirs = process.platform === "darwin"
+        ? ["/opt/homebrew/bin", "/usr/local/bin"]
+        : ["/usr/local/bin"];
+    for (const binDir of binDirs) {
+        for (const minor of [13, 12, 11, 10]) {
+            const command = join(binDir, `python3.${minor}`);
+            if (existsSync(command))
+                commands.push({ command, prefix: [] });
+        }
+    }
+    return commands;
+}
+
 function venvPythonPath(venvRoot: string): string {
     return process.platform === "win32"
         ? join(venvRoot, "Scripts", "python.exe")
@@ -94,6 +111,10 @@ export function resolvePythonCommands(workspaceRoot: string): PythonCommand[] {
     const venvPython = findWorkspaceVenvPython(workspaceRoot);
     if (venvPython)
         commands.push({ command: venvPython, prefix: [] });
+    for (const discovered of discoverVersionedPythonCommands()) {
+        if (!commands.some((item) => samePythonCommand(item, discovered)))
+            commands.push(discovered);
+    }
     const pipPython = findPipOwnerPython();
     if (pipPython && !commands.some((item) => item.command === pipPython))
         commands.push({ command: pipPython, prefix: [] });

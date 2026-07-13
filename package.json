@@ -7,7 +7,7 @@
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/fix-node-pty-perms.mjs && node scripts/fix-electron-app-name.mjs && electron-vite dev",
     "dev:first-run": "node scripts/reset-onboarding.mjs && electron-vite dev",
     "build": "tsc --noEmit && electron-vite build",
     "preview": "electron-vite preview",

@@ -26,8 +26,14 @@ def _module_exists(name: str) -> bool:
     if not name:
         return True
     try:
-        return importlib.util.find_spec(name) is not None
+        if importlib.util.find_spec(name) is None:
+            return False
     except (ModuleNotFoundError, ValueError, ImportError, AttributeError):
+        return False
+    try:
+        importlib.import_module(name)
+        return True
+    except (ModuleNotFoundError, ImportError, AttributeError):
         return False
 
 
