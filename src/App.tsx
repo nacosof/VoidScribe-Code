@@ -450,6 +450,20 @@ export function App() {
     const handleSelectPreset = useCallback(async (presetId: string) => {
         await saveSettings({ activePresetId: presetId });
     }, [saveSettings]);
+    const handleAttachChatFile = useCallback(async () => {
+        if (!workspacePath.trim()) {
+            setWorkspaceError(t(lang, "chatNeedsWorkspaceForFiles"));
+            return;
+        }
+        const result = await window.voidscribe.pickChatAttachment();
+        if (!result.ok) {
+            if (result.error !== "cancelled")
+                setWorkspaceError(result.error);
+            return;
+        }
+        setWorkspaceError("");
+        setComposerContextRefs((current) => mergeContextRefs(current, chatContextRefFromPath(result.filePath)));
+    }, [lang, workspacePath]);
     const openEditorFile = useCallback((path: string) => editor.openFile(path), [editor]);
     const handleEditorSave = useCallback(async (content: string) => {
         const result = await editorApiRef.current.saveActiveTab(content);
@@ -594,7 +608,6 @@ export function App() {
                     composerContextRefs={composerContextRefs}
                     streaming={Boolean(streaming)}
                     composerSupportsVision={composerSupportsVision}
-                    activeEditorPath={editor.activePath}
                     composerInputRef={composerInputRef}
                     sessionPending={pending.sessionPending}
                     onComposerChange={setComposer}
@@ -603,6 +616,7 @@ export function App() {
                     onModeChange={setMode}
                     onSelectPreset={handleSelectPreset}
                     onOpenSettings={() => setView("settings")}
+                    onAttachFile={handleAttachChatFile}
                     onSend={() => void sendMessage()}
                     onStop={() => void stopGeneration()}
                     onUndoPending={(change) => void pending.undoPendingChange(change)}

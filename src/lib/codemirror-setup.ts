@@ -29,7 +29,9 @@ import { vb } from "@codemirror/legacy-modes/mode/vb";
 import type { Extension } from "@codemirror/state";
 import { EditorState, Prec } from "@codemirror/state";
 import { autocompletion, completeAnyWord } from "@codemirror/autocomplete";
-import { HighlightStyle, syntaxHighlighting, foldGutter } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting, foldGutter, indentUnit } from "@codemirror/language";
+import { indentationMarkers } from "@replit/codemirror-indentation-markers";
+import rainbowBrackets from "rainbowbrackets";
 import { tags as t } from "@lezer/highlight";
 import { keymap, scrollPastEnd } from "@codemirror/view";
 import { EditorView } from "@codemirror/view";
@@ -220,10 +222,47 @@ const voidscribeHighlightStyle = HighlightStyle.define([
 const documentWordCompletion = EditorState.languageData.of(() => [
     { autocomplete: completeAnyWord },
 ]);
+const editorIndentGuides = indentationMarkers({
+    hideFirstIndent: false,
+    markerType: "fullScope",
+    thickness: 1,
+    highlightActiveBlock: false,
+    colors: {
+        dark: "#748097",
+        activeDark: "#748097",
+        light: "#748097",
+        activeLight: "#748097",
+    },
+});
+const indentGuideAlignmentFix = EditorView.theme({
+    ".cm-line.cm-indent-markers": {
+        overflow: "visible",
+    },
+    ".cm-indent-markers::before": {
+        left: "calc(2px - 0.55ch)",
+        zIndex: "0",
+        opacity: "0.36",
+    },
+}, { dark: true });
+const editorRainbowBracketColors = EditorView.theme({
+    ".rainbow-bracket-red, .rainbow-bracket-red > span": { color: "#ffd700" },
+    ".rainbow-bracket-orange, .rainbow-bracket-orange > span": { color: "#da70d6" },
+    ".rainbow-bracket-yellow, .rainbow-bracket-yellow > span": { color: "#6cb6ff" },
+    ".rainbow-bracket-green, .rainbow-bracket-green > span": { color: "#4ec9b0" },
+    ".rainbow-bracket-blue, .rainbow-bracket-blue > span": { color: "#ce9178" },
+    ".rainbow-bracket-indigo, .rainbow-bracket-indigo > span": { color: "#c586c0" },
+    ".rainbow-bracket-violet, .rainbow-bracket-violet > span": { color: "#dcdcaa" },
+}, { dark: true });
 export const voidscribeCodeTheme: Extension[] = [
+    EditorState.tabSize.of(4),
+    indentUnit.of("    "),
     voidscribeEditorTheme,
     editorSelectionFix,
     syntaxHighlighting(voidscribeHighlightStyle),
+    editorIndentGuides,
+    indentGuideAlignmentFix,
+    rainbowBrackets(),
+    editorRainbowBracketColors,
     foldGutter({ openText: "▾", closedText: "▸" }),
     documentWordCompletion,
     autocompletion({

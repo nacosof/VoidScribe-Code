@@ -72,6 +72,27 @@ export function registerWorkspaceHandlers(ctx: IpcContext): void {
         return ok({ workspacePath: ctx.getWorkspacePath(), recentWorkspaces: recent, filePath: relativePath });
     });
 
+    ipcMain.handle("workspace:pickChatAttachment", async () => {
+        try {
+            const root = resolve(currentWorkspace(ctx));
+            const result = await dialog.showOpenDialog({
+                defaultPath: root,
+                properties: ["openFile"],
+            });
+            if (result.canceled || !result.filePaths[0])
+                return { ok: false, error: "cancelled" };
+            const picked = resolve(result.filePaths[0]);
+            const relativePath = relative(root, picked).replace(/\\/g, "/");
+            if (!relativePath || relativePath.startsWith("..")) {
+                throw new WorkspaceError("Выберите файл внутри открытой папки проекта.");
+            }
+            return ok({ filePath: relativePath });
+        }
+        catch (err) {
+            return fail(err);
+        }
+    });
+
     ipcMain.handle("workspace:pickParentDirectory", async () => {
         const result = await dialog.showOpenDialog({
             properties: ["openDirectory", "createDirectory"],

@@ -81,7 +81,7 @@ export function ModelSelector({ settings, lang, disabled = false, onSelectPreset
             })}
           </div>, document.body)
         : null;
-    return (<div className={`model-selector${open ? " model-selector--open" : ""}`} ref={rootRef}>
+    return (<div className={`model-selector model-selector--preset${open ? " model-selector--open" : ""}`} ref={rootRef}>
       {menu}
       <button ref={triggerRef} type="button" className="model-selector__trigger" disabled={disabled} aria-haspopup={canOpenMenu && readyPresets.length > 1 ? "listbox" : undefined} aria-expanded={canOpenMenu && readyPresets.length > 1 ? open : undefined} onClick={handleTriggerClick}>
         <span className={`model-selector__trigger-label${!hasAnyAgent ? " model-selector__trigger-label--muted" : ""}`}>

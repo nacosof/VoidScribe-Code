@@ -11,6 +11,7 @@ const api: VoidScribeApi = {
     lintWorkspaceFile: (path, content, options) => ipcRenderer.invoke("workspace:lint", path, content, options),
     pickWorkspace: () => ipcRenderer.invoke("workspace:pick"),
     pickWorkspaceFile: () => ipcRenderer.invoke("workspace:pickFile"),
+    pickChatAttachment: () => ipcRenderer.invoke("workspace:pickChatAttachment"),
     pickParentDirectory: () => ipcRenderer.invoke("workspace:pickParentDirectory"),
     createProjectFolder: (parentPath, name) => ipcRenderer.invoke("workspace:createProjectFolder", parentPath, name),
     createProjectFile: (parentPath, name) => ipcRenderer.invoke("workspace:createProjectFile", parentPath, name),

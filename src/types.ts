@@ -204,6 +204,9 @@ export type VoidScribeApi = {
         recentWorkspaces: string[];
         filePath: string;
     }>>;
+    pickChatAttachment(): Promise<ApiResult<{
+        filePath: string;
+    }>>;
     pickParentDirectory(): Promise<ApiResult<{
         parentPath: string;
     }>>;
