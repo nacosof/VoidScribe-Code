@@ -1,5 +1,6 @@
 import { execFileSync } from "child_process";
-import { existsSync } from "fs";
+import { existsSync, readdirSync, realpathSync, statSync } from "fs";
+import { homedir } from "os";
 import { dirname, join } from "path";
 import { shellSpawnEnv } from "./shell-env";
 
@@ -21,21 +22,171 @@ const FALLBACK_PYTHON: PythonCommand[] = process.platform === "win32"
         { command: "python", prefix: [] },
     ];
 
-function discoverVersionedPythonCommands(): PythonCommand[] {
-    if (process.platform === "win32")
-        return [];
-    const commands: PythonCommand[] = [];
-    const binDirs = process.platform === "darwin"
-        ? ["/opt/homebrew/bin", "/usr/local/bin"]
-        : ["/usr/local/bin"];
-    for (const binDir of binDirs) {
-        for (const minor of [13, 12, 11, 10]) {
-            const command = join(binDir, `python3.${minor}`);
-            if (existsSync(command))
-                commands.push({ command, prefix: [] });
+function isPythonBinaryName(name: string): boolean {
+    const base = name.replace(/\.exe$/i, "");
+    if (/config$/i.test(base))
+        return false;
+    return /^python(\d+(\.\d+)*)?m?$/i.test(base);
+}
+
+function resolveRealPath(path: string): string {
+    try {
+        return realpathSync(path);
+    }
+    catch {
+        return path;
+    }
+}
+
+function collectPythonBinsFromDir(dir: string, into: Set<string>): void {
+    if (!existsSync(dir))
+        return;
+    let entries: string[];
+    try {
+        entries = readdirSync(dir);
+    }
+    catch {
+        return;
+    }
+    for (const name of entries) {
+        if (!isPythonBinaryName(name))
+            continue;
+        const full = join(dir, name);
+        try {
+            const st = statSync(full);
+            if (!st.isFile() && !st.isSymbolicLink())
+                continue;
+        }
+        catch {
+            continue;
+        }
+        into.add(resolveRealPath(full));
+    }
+}
+
+function unixSearchRoots(): string[] {
+    const home = homedir();
+    const roots = [
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+        join(home, ".local", "bin"),
+        join(home, "miniconda3", "bin"),
+        join(home, "anaconda3", "bin"),
+        join(home, "mambaforge", "bin"),
+        join(home, "miniforge3", "bin"),
+    ];
+    const pyenvVersions = join(home, ".pyenv", "versions");
+    if (existsSync(pyenvVersions)) {
+        try {
+            for (const version of readdirSync(pyenvVersions))
+                roots.push(join(pyenvVersions, version, "bin"));
+        }
+        catch {
         }
     }
-    return commands;
+    const frameworks = "/Library/Frameworks/Python.framework/Versions";
+    if (existsSync(frameworks)) {
+        try {
+            for (const version of readdirSync(frameworks)) {
+                if (version === "Current")
+                    continue;
+                roots.push(join(frameworks, version, "bin"));
+            }
+        }
+        catch {
+        }
+    }
+    return roots;
+}
+
+function discoverWindowsPyLauncher(): string[] {
+    const found: string[] = [];
+    try {
+        const output = execFileSync("py", ["-0p"], {
+            encoding: "utf8",
+            windowsHide: true,
+            stdio: ["ignore", "pipe", "ignore"],
+            env: shellSpawnEnv(),
+        });
+        for (const line of output.split(/\r?\n/)) {
+            const trimmed = line.trim();
+            const match = /([A-Za-z]:\\[^:\r\n]+\.exe)\s*$/i.exec(trimmed);
+            if (match?.[1] && existsSync(match[1]))
+                found.push(resolveRealPath(match[1]));
+        }
+    }
+    catch {
+    }
+    return found;
+}
+
+function windowsSearchRoots(): string[] {
+    const home = homedir();
+    const local = process.env.LOCALAPPDATA ?? join(home, "AppData", "Local");
+    const roots = [
+        join(local, "Programs", "Python"),
+        "C:\\Python",
+        "C:\\Program Files\\Python",
+        "C:\\Program Files (x86)\\Python",
+    ];
+    const expanded: string[] = [];
+    for (const root of roots) {
+        if (!existsSync(root))
+            continue;
+        try {
+            for (const entry of readdirSync(root)) {
+                const candidate = join(root, entry);
+                expanded.push(candidate);
+                expanded.push(join(candidate, "Scripts"));
+            }
+        }
+        catch {
+            expanded.push(root);
+        }
+    }
+    return expanded;
+}
+
+function whichAll(names: string[]): string[] {
+    if (process.platform === "win32")
+        return [];
+    const found: string[] = [];
+    for (const name of names) {
+        try {
+            const output = execFileSync("which", ["-a", name], {
+                encoding: "utf8",
+                windowsHide: true,
+                stdio: ["ignore", "pipe", "ignore"],
+                env: shellSpawnEnv(),
+            });
+            for (const line of output.split(/\r?\n/)) {
+                const path = line.trim();
+                if (path && existsSync(path))
+                    found.push(resolveRealPath(path));
+            }
+        }
+        catch {
+        }
+    }
+    return found;
+}
+
+function discoverInstalledPythonExecutables(): string[] {
+    const found = new Set<string>();
+    if (process.platform === "win32") {
+        for (const path of discoverWindowsPyLauncher())
+            found.add(path);
+        for (const root of windowsSearchRoots())
+            collectPythonBinsFromDir(root, found);
+    }
+    else {
+        for (const root of unixSearchRoots())
+            collectPythonBinsFromDir(root, found);
+        for (const path of whichAll(["python3", "python", "python2"]))
+            found.add(path);
+    }
+    return [...found];
 }
 
 function venvPythonPath(venvRoot: string): string {
@@ -107,21 +258,30 @@ function samePythonCommand(a: PythonCommand, b: PythonCommand): boolean {
 }
 
 export function resolvePythonCommands(workspaceRoot: string): PythonCommand[] {
-    const commands: PythonCommand[] = [];
     const venvPython = findWorkspaceVenvPython(workspaceRoot);
     if (venvPython)
-        commands.push({ command: venvPython, prefix: [] });
-    for (const discovered of discoverVersionedPythonCommands()) {
-        if (!commands.some((item) => samePythonCommand(item, discovered)))
-            commands.push(discovered);
-    }
+        return [{ command: venvPython, prefix: [] }];
+
+    const commands: PythonCommand[] = [];
+    const seen = new Set<string>();
+    const push = (item: PythonCommand) => {
+        const key = `${item.command}\0${item.prefix.join("\0")}`;
+        if (seen.has(key))
+            return;
+        seen.add(key);
+        commands.push(item);
+    };
+
+    for (const executable of discoverInstalledPythonExecutables())
+        push({ command: executable, prefix: [] });
+
     const pipPython = findPipOwnerPython();
-    if (pipPython && !commands.some((item) => item.command === pipPython))
-        commands.push({ command: pipPython, prefix: [] });
-    for (const fallback of FALLBACK_PYTHON) {
-        if (!commands.some((item) => samePythonCommand(item, fallback)))
-            commands.push(fallback);
-    }
+    if (pipPython)
+        push({ command: pipPython, prefix: [] });
+
+    for (const fallback of FALLBACK_PYTHON)
+        push(fallback);
+
     return commands;
 }
 

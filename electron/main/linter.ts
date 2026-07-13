@@ -438,27 +438,99 @@ async function lintDart(content: string): Promise<LintDiagnostic[]> {
         await unlink(tempPath).catch(() => undefined);
     }
 }
+function isMissingImportDiagnostic(item: LintDiagnostic): boolean {
+    return /Не удалось найти модуль|Could not find module|No module named/i.test(item.message);
+}
+
+function missingModuleName(message: string): string | null {
+    const match = /[«"]([^»"]+)[»"]/.exec(message)
+        ?? /No module named ['"]([^'"]+)['"]/i.exec(message);
+    return match?.[1]?.trim() || null;
+}
+
+async function canAnyPythonImport(
+    commands: ReturnType<typeof resolvePythonCommands>,
+    moduleName: string,
+    cwd: string,
+    env: NodeJS.ProcessEnv,
+): Promise<boolean> {
+    const code = "import sys\ntry:\n __import__(sys.argv[1])\nexcept Exception:\n raise SystemExit(1)";
+    if (commands.length === 0)
+        return false;
+    return await new Promise<boolean>((resolve) => {
+        let remaining = commands.length;
+        let done = false;
+        for (const { command, prefix } of commands) {
+            void execFileAsync(command, [...prefix, "-c", code, moduleName], {
+                env,
+                timeout: 8000,
+                maxBuffer: 256 * 1024,
+                cwd,
+                windowsHide: true,
+            }).then(() => {
+                if (!done) {
+                    done = true;
+                    resolve(true);
+                }
+            }).catch(() => {
+                remaining -= 1;
+                if (!done && remaining === 0)
+                    resolve(false);
+            });
+        }
+    });
+}
+
 async function runPythonLint(content: string, absolutePath: string, workspaceRoot: string): Promise<LintDiagnostic[]> {
     const tempPath = join(tmpdir(), `voidscribe-lint-${randomBytes(8).toString("hex")}.py`);
     await writeFile(tempPath, content, "utf8");
     const env = { ...process.env, VOIDSCRIBE_WORKSPACE: workspaceRoot, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" };
     const scriptPath = getPythonLintScriptPath();
+    const commands = resolvePythonCommands(workspaceRoot);
+    const cwd = dirname(absolutePath);
     try {
-        for (const { command, prefix } of resolvePythonCommands(workspaceRoot)) {
+        let diagnostics: LintDiagnostic[] | null = null;
+        for (const { command, prefix } of commands) {
             try {
                 const { stdout } = await execFileAsync(command, [...prefix, scriptPath, tempPath], {
                     env,
                     timeout: 15000,
                     maxBuffer: 1024 * 1024,
-                    cwd: dirname(absolutePath),
+                    cwd,
                     windowsHide: true,
                 });
-                return (JSON.parse(stdout.trim() || "[]") as LintDiagnostic[]).map(normalizeDiagnostic);
+                diagnostics = (JSON.parse(stdout.trim() || "[]") as LintDiagnostic[]).map(normalizeDiagnostic);
+                break;
             }
             catch {
             }
         }
-        return [];
+        if (!diagnostics)
+            return [];
+        const importAvailability = new Map<string, Promise<boolean>>();
+        const resolveImport = (moduleName: string) => {
+            let pending = importAvailability.get(moduleName);
+            if (!pending) {
+                pending = canAnyPythonImport(commands, moduleName, cwd, env);
+                importAvailability.set(moduleName, pending);
+            }
+            return pending;
+        };
+        const kept: LintDiagnostic[] = [];
+        for (const item of diagnostics) {
+            if (!isMissingImportDiagnostic(item)) {
+                kept.push(item);
+                continue;
+            }
+            const moduleName = missingModuleName(item.message);
+            if (!moduleName) {
+                kept.push(item);
+                continue;
+            }
+            if (!(await resolveImport(moduleName)))
+                kept.push(item);
+        }
+        return dedupeDiagnostics(kept);
     }
     finally {
         await unlink(tempPath).catch(() => undefined);
