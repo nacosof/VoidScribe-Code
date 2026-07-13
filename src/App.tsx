@@ -40,6 +40,17 @@ const DEFAULT_SETTINGS: AiSettings = {
 };
 const SIDEBAR_WIDTH_KEY = "voidscribe-sidebar-width-v1";
 const CHAT_WIDTH_KEY = "voidscribe-chat-width-v1";
+const CHAT_MIN_WIDTH = 280;
+const CHAT_MAX_WIDTH = 1100;
+const CHAT_MIN_EDITOR_WIDTH = 220;
+
+function clampChatWidth(width: number, sidebarWidth: number, sidebarOpen: boolean): number {
+    const sidebar = sidebarOpen ? sidebarWidth : 0;
+    const dynamicMax = window.innerWidth - sidebar - CHAT_MIN_EDITOR_WIDTH - 8;
+    const max = Math.min(CHAT_MAX_WIDTH, Math.max(CHAT_MIN_WIDTH, dynamicMax));
+    return Math.min(max, Math.max(CHAT_MIN_WIDTH, Math.round(width)));
+}
+
 function readStoredWidth(key: string, fallback: number): number {
     try {
         const value = Number.parseInt(localStorage.getItem(key) ?? "", 10);
@@ -80,6 +91,10 @@ export function App() {
     const lang = (settings.language ?? "en") as UiLanguage;
     const isChatLayout = (settings.windowLayout ?? "editor") === "agent";
     const resizeRef = useRef<"sidebar" | "chat" | null>(null);
+    const sidebarWidthRef = useRef(sidebarWidth);
+    const sidebarOpenRef = useRef(sidebarOpen);
+    sidebarWidthRef.current = sidebarWidth;
+    sidebarOpenRef.current = sidebarOpen;
     const consoleRef = useRef<WorkspaceConsoleHandle>(null);
     const editorApiRef = useRef(editor);
     editorApiRef.current = editor;
@@ -361,6 +376,13 @@ export function App() {
         });
     }, [refreshTree, restoreWorkspaceTabs]);
     useEffect(() => {
+        function handleWindowResize() {
+            setChatWidth((current) => clampChatWidth(current, sidebarWidthRef.current, sidebarOpenRef.current));
+        }
+        window.addEventListener("resize", handleWindowResize);
+        return () => window.removeEventListener("resize", handleWindowResize);
+    }, []);
+    useEffect(() => {
         function onMouseMove(event: MouseEvent) {
             if (!resizeRef.current)
                 return;
@@ -369,7 +391,7 @@ export function App() {
             }
             else {
                 const width = window.innerWidth - event.clientX;
-                setChatWidth(Math.min(720, Math.max(280, width)));
+                setChatWidth(clampChatWidth(width, sidebarWidthRef.current, sidebarOpenRef.current));
             }
         }
         function onMouseUp() {

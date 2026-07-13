@@ -11,10 +11,12 @@ import { TerminalPane } from "@/features/terminal/components/TerminalPane";
 import {
     appendLogLine,
     clampTerminalHeight,
+    DEFAULT_TERMINAL_HEIGHT,
+    getMaxTerminalHeight,
     normalizeXtermOutput,
     PANEL_TABS,
+    persistTerminalHeight,
     readStoredTerminalHeight,
-    TERMINAL_HEIGHT_KEY,
     type PanelTabId,
 } from "@/features/terminal/lib/terminal-utils";
 
@@ -35,6 +37,7 @@ type WorkspaceConsoleProps = {
 export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceConsoleProps>(function WorkspaceConsole({ workspacePath, lang, hidden = false, onClose, onAgentInterrupt }, ref) {
     const [panelHeight, setPanelHeight] = useState(readStoredTerminalHeight);
     const [resizing, setResizing] = useState(false);
+    const [terminalMaximized, setTerminalMaximized] = useState(false);
     const [sessions, setSessions] = useState<PtySessionInfo[]>([]);
     const [activeId, setActiveId] = useState<string | null>(null);
     const [bootError, setBootError] = useState("");
@@ -53,7 +56,9 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
     } | null>(null);
     const outputScrollRef = useRef<HTMLDivElement>(null);
     const debugScrollRef = useRef<HTMLDivElement>(null);
+    const panelRef = useRef<HTMLElement>(null);
     const panelHeightRef = useRef(panelHeight);
+    const heightBeforeMaximizeRef = useRef<number | null>(null);
     const workspaceRef = useRef(workspacePath);
     const activeIdRef = useRef(activeId);
     const panesRef = useRef(new Map<string, { term: Terminal; fit: FitAddon }>());
@@ -64,6 +69,18 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
     activeIdRef.current = activeId;
     mirrorSessionIdRef.current = sessions.find((session) => session.mirror)?.id ?? null;
     const hasWorkspace = Boolean(workspacePath.trim());
+
+    const getShellMaxHeight = useCallback(() => {
+        return getMaxTerminalHeight(panelRef.current?.parentElement ?? null);
+    }, []);
+
+    const applyPanelHeight = useCallback((height: number) => {
+        const next = clampTerminalHeight(height, getShellMaxHeight());
+        panelHeightRef.current = next;
+        setPanelHeight(next);
+        persistTerminalHeight(next);
+        return next;
+    }, [getShellMaxHeight]);
 
     const applySessionList = useCallback((list: { sessions: PtySessionInfo[]; activeId: string | null }) => {
         setSessions(list.sessions);
@@ -286,12 +303,41 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
 
     useEffect(() => {
         function handleResize() {
-            setPanelHeight((current) => clampTerminalHeight(current));
+            applyPanelHeight(panelHeightRef.current);
             fitActiveTerminal();
         }
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
-    }, [fitActiveTerminal]);
+    }, [applyPanelHeight, fitActiveTerminal]);
+
+    useEffect(() => {
+        if (hidden)
+            return;
+        applyPanelHeight(panelHeightRef.current);
+    }, [hidden, applyPanelHeight]);
+
+    useEffect(() => {
+        const panel = panelRef.current;
+        if (!panel || hidden)
+            return;
+        let frame = 0;
+        const scheduleReflow = () => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => {
+                applyPanelHeight(panelHeightRef.current);
+                fitActiveTerminal();
+            });
+        };
+        const observer = new ResizeObserver(scheduleReflow);
+        observer.observe(panel);
+        const parent = panel.parentElement;
+        if (parent)
+            observer.observe(parent);
+        return () => {
+            cancelAnimationFrame(frame);
+            observer.disconnect();
+        };
+    }, [hidden, applyPanelHeight, fitActiveTerminal]);
 
     useEffect(() => {
         if (panelTab !== "problems" || !hasWorkspace)
@@ -392,12 +438,13 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
         event.preventDefault();
         const startY = event.clientY;
         const startHeight = panelHeightRef.current;
+        const maxHeight = getShellMaxHeight();
         const handle = event.currentTarget;
         handle.setPointerCapture(event.pointerId);
         setResizing(true);
         document.body.classList.add("terminal-panel--resizing-body");
         const onMove = (moveEvent: PointerEvent) => {
-            const next = clampTerminalHeight(startHeight - (moveEvent.clientY - startY));
+            const next = clampTerminalHeight(startHeight - (moveEvent.clientY - startY), maxHeight);
             panelHeightRef.current = next;
             setPanelHeight(next);
         };
@@ -409,10 +456,12 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
             }
             setResizing(false);
             document.body.classList.remove("terminal-panel--resizing-body");
-            try {
-                localStorage.setItem(TERMINAL_HEIGHT_KEY, String(panelHeightRef.current));
-            }
-            catch {
+            persistTerminalHeight(panelHeightRef.current);
+            const maxHeight = getShellMaxHeight();
+            const atMax = Math.abs(panelHeightRef.current - maxHeight) <= 4;
+            setTerminalMaximized(atMax);
+            if (!atMax) {
+                heightBeforeMaximizeRef.current = null;
             }
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
@@ -422,6 +471,21 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
         window.addEventListener("pointercancel", onUp);
+    }
+
+    function handleMaximizeTerminal() {
+        if (terminalMaximized) {
+            const restore = heightBeforeMaximizeRef.current ?? DEFAULT_TERMINAL_HEIGHT;
+            heightBeforeMaximizeRef.current = null;
+            setTerminalMaximized(false);
+            applyPanelHeight(restore);
+        }
+        else {
+            heightBeforeMaximizeRef.current = panelHeightRef.current;
+            setTerminalMaximized(true);
+            applyPanelHeight(getShellMaxHeight());
+        }
+        requestAnimationFrame(() => fitActiveTerminal({ focus: true }));
     }
 
     function handleLogContextMenu(event: MouseEvent<HTMLElement>) {
@@ -437,6 +501,7 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
 
     return (
         <section
+            ref={panelRef}
             className={`terminal-panel terminal-panel--open terminal-panel--editor-dock${resizing ? " terminal-panel--resizing" : ""}${hidden ? " terminal-panel--hidden" : ""}`}
             style={{ height: hidden ? 0 : panelHeight }}
             aria-label={t(lang, "titleTerminal")}
@@ -463,6 +528,17 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
                 <button type="button" className="terminal-panel__tool-btn" onClick={() => void handleNewTerminal()} aria-label={t(lang, "terminalNew")} title={t(lang, "terminalNew")}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                         <path d="M12 5v14M5 12h14" />
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    className={`terminal-panel__tool-btn${terminalMaximized ? " terminal-panel__tool-btn--maximized" : ""}`}
+                    onClick={handleMaximizeTerminal}
+                    aria-label={t(lang, terminalMaximized ? "terminalRestore" : "terminalMaximize")}
+                    title={t(lang, terminalMaximized ? "terminalRestore" : "terminalMaximize")}
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M18 15l-6-6-6 6" />
                     </svg>
                 </button>
                 <button type="button" className="terminal-panel__tool-btn" onClick={onClose} aria-label={t(lang, "terminalHide")} title={t(lang, "terminalHide")}>
