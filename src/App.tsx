@@ -439,14 +439,11 @@ export function App() {
         onOpenRecent: (path) => void openRecentWorkspace(path),
     }), [openRecentWorkspace, pickWorkspace, pickWorkspaceFile]);
     const titleBarCenter = useMemo(() => {
-        const active = editor.activePath?.trim();
-        if (active)
-            return active.split(/[/\\]/).pop() ?? active;
         const workspace = workspacePath.trim();
-        if (workspace)
-            return workspace.split(/[/\\]/).pop() ?? workspace;
-        return undefined;
-    }, [editor.activePath, workspacePath]);
+        if (!workspace)
+            return undefined;
+        return workspace.split(/[/\\]/).pop() ?? workspace;
+    }, [workspacePath]);
     const handleSelectPreset = useCallback(async (presetId: string) => {
         await saveSettings({ activePresetId: presetId });
     }, [saveSettings]);

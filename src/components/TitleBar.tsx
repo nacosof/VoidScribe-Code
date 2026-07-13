@@ -99,7 +99,7 @@ export function TitleBar({
                     ) : null}
                 </div>
             )}
-            {isMac && centerTitle ? (
+            {centerTitle ? (
                 <div className="titlebar__center" title={centerTitle}>{centerTitle}</div>
             ) : null}
             <div className="titlebar__controls">

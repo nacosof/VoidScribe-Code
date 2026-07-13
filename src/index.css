@@ -297,6 +297,7 @@ button {
 }
 
 .titlebar {
+  position: relative;
   flex-shrink: 0;
   height: 36px;
   display: flex;
