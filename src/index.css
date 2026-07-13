@@ -312,7 +312,7 @@ button {
 
 .titlebar--mac {
   position: relative;
-  padding-left: 68px;
+  padding-left: 80px;
 }
 
 .titlebar--mac-fullscreen {
@@ -325,7 +325,6 @@ button {
   gap: 2px;
   min-width: 0;
   flex-shrink: 0;
-  margin-left: -10px;
 }
 
 .titlebar__btn--sidebar {

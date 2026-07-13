@@ -50,18 +50,19 @@
 
 ## Запуск из исходников
 
-**Нужно:** Node.js 18+, npm, Git. На macOS для терминала может понадобиться `xcode-select --install`.
+**Нужно:** Node.js 18+, npm, Git. На macOS: `xcode-select --install`
 
 ```bash
 git clone https://github.com/nacosof/VoidScribe-Code.git
 cd VoidScribe-Code
 npm install
+npx electron install
 npm run dev
 ```
 
 ```bash
-npm run build    # проверка типов + сборка → out/
-npm run preview  # предпросмотр production-сборки
+npm run build
+npm run preview
 ```
 
 ---

@@ -50,18 +50,19 @@ Not every provider and model has been fully tested. If something does not work, 
 
 ## Run from source
 
-**Requirements:** Node.js 18+, npm, Git. On macOS, `xcode-select --install` may be needed for the terminal.
+**Requirements:** Node.js 18+, npm, Git. On macOS: `xcode-select --install`
 
 ```bash
 git clone https://github.com/nacosof/VoidScribe-Code.git
 cd VoidScribe-Code
 npm install
+npx electron install
 npm run dev
 ```
 
 ```bash
-npm run build    # typecheck + build → out/
-npm run preview  # preview production build
+npm run build
+npm run preview
 ```
 
 ---
