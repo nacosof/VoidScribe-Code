@@ -31,8 +31,8 @@ function clampZoomLevel(level: number): number {
 
 function resolveAppIcon(): Electron.NativeImage {
     const candidates = [
-        join(__dirname, "../../public/logo.png"),
-        join(process.cwd(), "public/logo.png"),
+        join(__dirname, "../../public/icon.png"),
+        join(process.cwd(), "public/icon.png"),
     ];
     for (const candidate of candidates) {
         if (!existsSync(candidate))
