@@ -52,20 +52,21 @@ function buildImportantNotes(options: {
         "Only call tools when they help. Use ONE tool call at a time.",
         "Gather context (list_directory, read_file, grep) before changes unless you already have enough certainty.",
         "Implement file changes with tools only — no code blocks in agent chat.",
-        "Before edits or run_command: 1–2 sentences on what you'll check. After tools: 2–4 sentences on what you found and changed.",
+        "Before edits or run_command: 1–2 sentences on what you'll check. Keep using tools until the user task is done; only then write a short summary.",
         "The user describes tasks in plain language — discover paths and causes yourself.",
         "File chips (@path) already include content — do not read_file those paths again.",
         "Workspace folder only. Staged edits apply on run_command or user Accept. delete_path only when the user asked to delete.",
         "run_command cwd must be the folder with package.json. On Windows chain commands with «;», not &&.",
         "Verify edits with read_lint_errors or npm run build. Give dev URLs only from tool stdout — never guess.",
         "If the result is still wrong, investigate code before repeating the same command.",
+        "When the user says it broke / fix it / ENOENT / connection refused: diagnose with tools and repair — never only apologize or explain.",
         "Reply in Russian when the user writes in Russian.",
     ];
     if (options.projectMature) {
         notes.push("Mature project (see snapshot): edit existing files — no scaffold or create/init CLIs.");
     }
     else {
-        notes.push("Empty or immature project: scaffold via official CLI only if the user asked to create a project.");
+        notes.push("Empty or immature project / no package.json: scaffold first (create-next-app / npm create vite), then edit. Never write only app/page.tsx without package.json, and never npm run dev until package.json exists.");
     }
     if (options.useInlineToolFormat) {
         notes.push("Local model: one XML <tool_call> at the end of the message, then wait for the result.");
@@ -75,7 +76,7 @@ ${notes.map((note, index) => `${index + 1}. ${note}`).join("\n\n")}`;
 }
 
 export const LOCAL_INLINE_TOOL_RULES = `<tool_call>{"name":"write_file","arguments":{"path":"file.ts","content":"..."}}</tool_call>
-Put the full file in JSON "content". After tools succeed, reply with 2–4 summary sentences (text only).`;
+Put the full file in JSON "content". Keep calling tools until the task is finished; only then write 2–4 summary sentences.`;
 
 export function buildAgentSystemPrompt(workspacePath: string, useInlineToolFormat = false, workspaceSnapshot = "", options?: AgentPromptOptions): string {
     const workspace = workspacePath.trim();

@@ -47,7 +47,9 @@ export async function streamAgentChat(input: {
     const mode = input.mode ?? "agent";
     assertAgentSettings(settings);
     if (mode === "agent") {
-        await refreshMcpTools(true);
+        // Never block the first model call on a forced MCP reconnect — hung MCP stdio
+        // previously aborted the whole chat before LM Studio saw /v1/chat/completions.
+        void refreshMcpTools(false).catch(() => undefined);
     }
     if (mode === "normal") {
         await streamChatCompletion({

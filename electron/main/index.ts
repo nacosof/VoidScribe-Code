@@ -29,6 +29,26 @@ function clampZoomLevel(level: number): number {
     return Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, Math.round(level)));
 }
 
+async function loadRendererDevUrl(win: BrowserWindow, url: string, attempts = 40): Promise<void> {
+    for (let i = 0; i < attempts; i += 1) {
+        if (win.isDestroyed())
+            return;
+        try {
+            await win.loadURL(url);
+            return;
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            const retryable = /ERR_CONNECTION_REFUSED|ERR_FAILED|ERR_CONNECTION_RESET/i.test(message);
+            if (!retryable || i === attempts - 1) {
+                console.error(`Failed to load renderer URL ${url}:`, message);
+                return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+    }
+}
+
 function resolveAppIcon(): Electron.NativeImage {
     const candidates = [
         join(__dirname, "../../public/logo_app.png"),
@@ -110,7 +130,12 @@ function createWindow(): void {
         refreshMacAppMenu();
     });
     if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-        mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+        // Prefer 127.0.0.1 over localhost (Windows IPv6 ::1 vs IPv4 mismatch → ERR_CONNECTION_REFUSED).
+        const rendererUrl = process.env.ELECTRON_RENDERER_URL.replace(
+            "://localhost",
+            "://127.0.0.1",
+        );
+        void loadRendererDevUrl(mainWindow, rendererUrl);
     }
     else {
         mainWindow.loadFile(join(__dirname, "../renderer/index.html"));

@@ -9,6 +9,7 @@ export { isDevServerCommand } from "./npm-project-cwd";
 const COMMAND_TIMEOUT_MS = 300000;
 const DEV_SERVER_PROBE_MS = 90000;
 const MAX_OUTPUT_CHARS = 32000;
+const WAITING_FOR_INPUT_RE = /(?:\(y\/n\)|\(Y\/n\)|\[y\/N\]|\[Y\/n\]|Press any key|password\s*:|Enter passphrase|Are you sure|Confirm\?|Waiting for input)/i;
 const DEV_BUILD_FAILED_RE = /build error|failed to compile|compilation failed|error TS\d+|unable to decode|processing image failed|module not found|cannot find module|ELIFECYCLE|turbopack build failed|invalid next\.config|couldn't find the next\.js package|port \d+ is in use|eaddrinuse|error when starting dev server|command not found|ENOENT/i;
 const DEV_SERVER_READY_RE = /ready in [\d.]+(?:ms|s)?|✓\s*ready|\bVITE\b[^\n]*\bready\b|compiled successfully|started server on|(?:local|network):\s*https?:\/\/|https?:\/\/(?:localhost|127\.0\.0\.1):\d+|listening on|➜\s*Local:/i;
 export type TerminalRunResult = {
@@ -27,6 +28,16 @@ type ActiveCommand = {
     cancelled: boolean;
 };
 let activeCommand: ActiveCommand | null = null;
+/** Dev servers left running after probe so the user can open Local: URL. */
+let backgroundDevServer: ChildProcess | null = null;
+
+function clearBackgroundDevServer(): void {
+    if (!backgroundDevServer)
+        return;
+    const previous = backgroundDevServer;
+    backgroundDevServer = null;
+    killProcessTree(previous);
+}
 function killProcessTree(child: ChildProcess): void {
     const pid = child.pid;
     if (!pid) {
@@ -107,30 +118,32 @@ type EarlyStopDecision = {
     stop: true;
     exitCode: number;
     note: string | null;
+    keepAlive?: boolean;
 } | {
     stop: "defer";
     deferMs: number;
     exitCode: number;
     note: string | null;
+    keepAlive?: boolean;
 };
 async function runDevServerProbe(workspaceRoot: string, command: string, relativeCwd: string, options?: TerminalRunOptions): Promise<TerminalRunResult> {
+    clearBackgroundDevServer();
     const isWin = process.platform === "win32";
     const probeCommand = prepareDevServerCommand(command, isWin);
     return runWorkspaceCommandBlocking(workspaceRoot, probeCommand, relativeCwd, options, DEV_SERVER_PROBE_MS, (stdout, stderr) => {
         const combined = `${stdout}\n${stderr}`;
         if (DEV_BUILD_FAILED_RE.test(combined)) {
-            return { stop: true, exitCode: 1, note: null };
+            return { stop: true, exitCode: 1, note: null, keepAlive: false };
         }
         if (DEV_SERVER_READY_RE.test(combined)) {
             const previewNote = formatDevServerPreviewNote(combined, relativeCwd);
             return {
                 stop: "defer",
-                deferMs: 4500,
+                deferMs: 2500,
                 exitCode: 0,
+                keepAlive: true,
                 note: previewNote ||
-                    "\n[VoidScribe] Dev-сервер запустился — процесс остановлен, чтобы агент продолжил работу. " +
-                    "Сообщи пользователю URL из вывода (Local: http://localhost:…). " +
-                    "Проверка сборки без долгого ожидания: npm run build.",
+                    "\n[VoidScribe] Dev-сервер поднялся и оставлен в фоне. Сообщи пользователю URL (Local: http://127.0.0.1:…).",
             };
         }
         return null;
@@ -209,6 +222,7 @@ async function runWorkspaceCommandBlocking(workspaceRoot: string, command: strin
         const applyEarlyStop = (decision: {
             exitCode: number;
             note: string | null;
+            keepAlive?: boolean;
         }) => {
             if (decision.note) {
                 stdout += decision.note;
@@ -220,6 +234,19 @@ async function runWorkspaceCommandBlocking(workspaceRoot: string, command: strin
                 exitCode: decision.exitCode,
                 cwd,
             };
+            if (decision.keepAlive) {
+                if (activeCommand?.child === child) {
+                    activeCommand = null;
+                }
+                backgroundDevServer = child;
+                try {
+                    child.unref();
+                }
+                catch {
+                }
+                finish({ ok: true, value: probeEarlyResult });
+                return;
+            }
             killProcessTree(child);
         };
         const tryEarlyStop = () => {
@@ -243,6 +270,7 @@ async function runWorkspaceCommandBlocking(workspaceRoot: string, command: strin
                     applyEarlyStop({
                         exitCode: decision.exitCode,
                         note: decision.note,
+                        keepAlive: decision.keepAlive,
                     });
                 }, decision.deferMs);
                 return;
@@ -253,17 +281,30 @@ async function runWorkspaceCommandBlocking(workspaceRoot: string, command: strin
             }
             applyEarlyStop(decision);
         };
+        const abortIfWaitingForInput = () => {
+            if (settled || probeEarlyResult || onOutput)
+                return;
+            const combined = `${stdout}\n${stderr}`;
+            if (!WAITING_FOR_INPUT_RE.test(combined))
+                return;
+            const note = "\n[VoidScribe] Команда ждёт интерактивный ввод (y/n, пароль и т.п.) — stdin закрыт. Запусти с флагами non-interactive (--yes / -y) или выполни вручную в терминале.";
+            stdout += note;
+            options?.onStdout?.(note);
+            cancelCommand(new WorkspaceError("Команда зависла на интерактивном вводе. Используй non-interactive флаги или запусти вручную."));
+        };
         child.stdout?.on("data", (chunk: Buffer) => {
             const text = chunk.toString("utf8");
             stdout += text;
             options?.onStdout?.(text);
             tryEarlyStop();
+            abortIfWaitingForInput();
         });
         child.stderr?.on("data", (chunk: Buffer) => {
             const text = chunk.toString("utf8");
             stderr += text;
             options?.onStderr?.(text);
             tryEarlyStop();
+            abortIfWaitingForInput();
         });
         child.on("error", (err) => {
             if (isShellSpawnEnoent(err)) {

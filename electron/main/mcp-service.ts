@@ -87,7 +87,14 @@ export async function refreshMcpTools(force = false): Promise<ChatCompletionTool
                 env: { ...process.env, ...(server.env ?? {}) } as Record<string, string>,
             });
             client = new Client({ name: "voidscribe", version: "0.1.0" });
-            await client.connect(transport);
+            const connectTimeoutMs = 4000;
+            await Promise.race([
+                client.connect(transport),
+                new Promise<never>((_, reject) => {
+                    const timer = setTimeout(() => reject(new Error(`MCP «${serverName}» connect timeout`)), connectTimeoutMs);
+                    timer.unref?.();
+                }),
+            ]);
             const listed = await client.listTools();
             for (const tool of listed.tools) {
                 const entry: McpToolEntry = {

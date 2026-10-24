@@ -264,14 +264,16 @@ export function compactMessagesForApi(messages: OpenAiMessage[], provider: UserA
     return changed;
 }
 export function isLikelyContextOverflow400(err: unknown): boolean {
-    if (err instanceof Error && "status" in err) {
-        const status = (err as {
-            status?: number;
-        }).status;
-        if (status === 400)
-            return true;
-    }
     const msg = err instanceof Error ? err.message : String(err);
-    return (/\b400\b/.test(msg) &&
-        !/tool_use_failed|function call/i.test(msg));
+    // LM Studio often returns 400 for broken tool/jinja templates — NOT context overflow.
+    if (/jinja|prompt template|UndefinedValue|tool_use_failed|function call|tools?\s+are\s+not|does not support tools/i.test(msg)) {
+        return false;
+    }
+    const status = typeof err === "object" && err !== null
+        ? (err as { status?: number }).status
+        : undefined;
+    if (status === 400 || /\b400\b/.test(msg)) {
+        return /context|token|length|too long|maximum|overflow|too many/i.test(msg);
+    }
+    return false;
 }

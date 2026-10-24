@@ -295,8 +295,14 @@ export function createAnthropicSchedulerProvider(options: AnthropicSchedulerProv
                 truncatedPath: null,
             };
         },
-        recordAssistantToolStep() {
-            messages.push({ role: "assistant", content: lastAssistantContent });
+        recordAssistantToolStep(step: SchedulerModelStep) {
+            const allowedIds = new Set(step.toolCalls.map((call) => call.id));
+            const content = lastAssistantContent.filter((block) => {
+                if (block.type !== "tool_use")
+                    return true;
+                return allowedIds.has(block.id);
+            });
+            messages.push({ role: "assistant", content: content.length ? content : lastAssistantContent });
         },
         recordToolBatchResults(results: AgentToolBatchResult[]) {
             const toolResults: AnthropicToolResultBlock[] = results.map(({ call, result }) => ({

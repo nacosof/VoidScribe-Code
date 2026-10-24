@@ -193,19 +193,32 @@ export async function withAgentDevServerPort(workspaceRoot: string, relativeCwd:
     const devScript = await readPackageDevScript(workspaceRoot, relativeCwd);
     const note = devServerPortNote(port);
     if (/^npm run dev\b/i.test(trimmed) || /^pnpm run dev\b/i.test(trimmed) || /^yarn dev\b/i.test(trimmed)) {
-        if (devScript && /next\s+dev/i.test(devScript)) {
+        if (!devScript) {
+            return {
+                command: trimmed,
+                note: `[VoidScribe] В этой папке нет package.json — npm run dev / npx vite здесь бессмысленны. ` +
+                    `Сначала scaffold (create-next-app / npm create vite) или укажи cwd с package.json.`,
+            };
+        }
+        if (/next\s+dev/i.test(devScript)) {
             return { command: `npx next dev -p ${port}`, note };
         }
-        if (!devScript || /vite/i.test(devScript)) {
+        if (/vite/i.test(devScript)) {
             return { command: `npx vite --host 127.0.0.1 --port ${port} --strictPort`, note };
         }
         return { command: trimmed, note: "" };
     }
     if (/^npm start\b/i.test(trimmed)) {
-        if (devScript && /next\s+start/i.test(devScript)) {
+        if (!devScript) {
+            return {
+                command: trimmed,
+                note: `[VoidScribe] Нет package.json — npm start не сработает. Создай проект или смени cwd.`,
+            };
+        }
+        if (/next\s+start/i.test(devScript)) {
             return { command: trimmed, note: "" };
         }
-        if (!devScript || /vite/i.test(devScript)) {
+        if (/vite/i.test(devScript)) {
             return { command: `npx vite --host 127.0.0.1 --port ${port} --strictPort`, note };
         }
     }
@@ -246,6 +259,6 @@ export function formatDevServerPreviewNote(output: string, relativeCwd: string):
         return "";
     }
     const folderHint = relativeCwd !== "." ? ` (папка ${relativeCwd})` : "";
-    return `\n[VoidScribe] Dev-сервер поднялся${folderHint}. Открой в браузере: ${url}\n` +
-        `Сообщи пользователю ссылку и что сайт готов. Для повторного просмотра: npm run dev с cwd «${relativeCwd}».`;
+    return `\n[VoidScribe] Dev-сервер поднят и продолжает работать${folderHint}. Открой: ${url}\n` +
+        `Сообщи пользователю эту ссылку. Не убивай процесс — он оставлен в фоне.`;
 }

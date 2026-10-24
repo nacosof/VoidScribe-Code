@@ -1,8 +1,10 @@
 import { analyzeCommandOutput, isMissingNodeModulesBuildError, isProductionBuildCommand } from "../../build-diagnostics";
-import { hasNodeModules, resolveNpmProjectCwd, withAgentDevServerPort } from "../../npm-project-cwd";
+import { findPackageJsonSubdirs, hasNodeModules, hasPackageJson, isNpmProjectLocalCommand, resolveNpmProjectCwd, withAgentDevServerPort } from "../../npm-project-cwd";
 import { isDevServerCommand, runWorkspaceCommand } from "../../terminal";
 import { validateAgentCommand, validateAgentCwd } from "../../agent-workspace";
 import { appendMirrorOutputForWorkspace } from "../../pty-manager";
+import { getAgentPermissionMode, requestAgentApproval } from "../../agent-approval";
+import { WorkspaceError } from "../../workspace";
 import { toolText, type AgentToolResult } from "../../agent-tool-result";
 import { emitToolEvent, type ToolExecutionContext } from "../context";
 import { readStringArg } from "../utils";
@@ -41,8 +43,31 @@ export async function handleRunCommand(ctx: ToolExecutionContext): Promise<Agent
     const requestedCwd = validateAgentCwd(ctx.workspaceRoot, readStringArg(ctx.args, "cwd") || ".");
     const cwdResolution = await resolveNpmProjectCwd(ctx.workspaceRoot, rawCommand, requestedCwd, ctx.overlay.listPaths());
     const cwd = validateAgentCwd(ctx.workspaceRoot, cwdResolution.cwd);
+    if (isNpmProjectLocalCommand(rawCommand) && !(await hasPackageJson(ctx.workspaceRoot, cwd))) {
+        const candidates = await findPackageJsonSubdirs(ctx.workspaceRoot);
+        const hint = candidates.length
+            ? `Подпапки с package.json: ${candidates.join(", ")}. Укажи cwd (например «${candidates[0]}») или создай новый проект в корне.`
+            : "В workspace нет package.json — сначала scaffold (npx create-next-app@latest . --ts --tailwind --app --yes или npm create vite@latest).";
+        throw new WorkspaceError(
+            `Нельзя запустить «${rawCommand}»: в «${cwd}» нет package.json. ${hint} ` +
+                `Если задача — новый сайт: сейчас scaffold (create-next-app / create vite), не повторяй npm run dev.`,
+        );
+    }
     const portPatch = await withAgentDevServerPort(ctx.workspaceRoot, cwd, rawCommand);
     const command = portPatch.command;
+    const approval = await requestAgentApproval({
+        kind: "run_command",
+        toolName: "run_command",
+        title: "Разрешить команду?",
+        detail: `cwd: ${cwd}\n${command}`,
+        fingerprint: `${cwd}::${command}`.toLowerCase(),
+        signal: ctx.signal,
+    });
+    if (approval !== "allow") {
+        throw new WorkspaceError(getAgentPermissionMode() === "read"
+            ? "Режим «Только чтение»: run_command запрещён."
+            : "Пользователь отклонил выполнение команды.");
+    }
     const flushed = await ctx.overlay.flushAll(ctx.workspaceRoot);
     appendMirrorOutputForWorkspace(ctx.workspaceRoot, `\r\n\x1b[36m> ${command}\x1b[0m\r\n`);
     if (cwdResolution.note) {
@@ -68,22 +93,35 @@ export async function handleRunCommand(ctx: ToolExecutionContext): Promise<Agent
         isMissingNodeModulesBuildError(combined) &&
         !(await hasNodeModules(ctx.workspaceRoot, cwd));
     if (shouldAutoInstall) {
-        const autoNote = "[VoidScribe] node_modules не найден — автоматически запускаю npm install…";
-        extraNotes.push(autoNote);
-        appendMirrorOutputForWorkspace(ctx.workspaceRoot, `\r\n\x1b[33m${autoNote}\x1b[0m\r\n`);
-        appendMirrorOutputForWorkspace(ctx.workspaceRoot, `\r\n\x1b[36m> npm install\x1b[0m\r\n`);
-        emitToolEvent(ctx, { type: "console_command", command: "npm install", source: "agent" });
-        await runWithStreams(ctx, "npm install", cwd);
-        appendMirrorOutputForWorkspace(ctx.workspaceRoot, `\r\n\x1b[36m> ${command}\x1b[0m\r\n`);
-        emitToolEvent(ctx, { type: "console_command", command, source: "agent" });
-        run = await runWithStreams(ctx, command, cwd);
-        analysis = analyzeCommandOutput({
-            command,
-            stdout: run.stdout,
-            stderr: run.stderr,
-            exitCode: run.exitCode,
-            userIntent: ctx.userIntent,
+        const installApproval = await requestAgentApproval({
+            kind: "auto_install",
+            toolName: "auto_install",
+            title: "Разрешить npm install?",
+            detail: `cwd: ${cwd}\nnpm install\n(нужен для: ${command})`,
+            fingerprint: `${cwd}::npm install`.toLowerCase(),
+            signal: ctx.signal,
         });
+        if (installApproval === "allow") {
+            const autoNote = "[VoidScribe] node_modules не найден — запускаю npm install…";
+            extraNotes.push(autoNote);
+            appendMirrorOutputForWorkspace(ctx.workspaceRoot, `\r\n\x1b[33m${autoNote}\x1b[0m\r\n`);
+            appendMirrorOutputForWorkspace(ctx.workspaceRoot, `\r\n\x1b[36m> npm install\x1b[0m\r\n`);
+            emitToolEvent(ctx, { type: "console_command", command: "npm install", source: "agent" });
+            await runWithStreams(ctx, "npm install", cwd);
+            appendMirrorOutputForWorkspace(ctx.workspaceRoot, `\r\n\x1b[36m> ${command}\x1b[0m\r\n`);
+            emitToolEvent(ctx, { type: "console_command", command, source: "agent" });
+            run = await runWithStreams(ctx, command, cwd);
+            analysis = analyzeCommandOutput({
+                command,
+                stdout: run.stdout,
+                stderr: run.stderr,
+                exitCode: run.exitCode,
+                userIntent: ctx.userIntent,
+            });
+        }
+        else {
+            extraNotes.push("[VoidScribe] npm install отклонён пользователем. Сначала установи зависимости.");
+        }
     }
 
     appendMirrorOutputForWorkspace(ctx.workspaceRoot, `\r\n\x1b[90mexit ${run.exitCode ?? "?"}\x1b[0m\r\n`);

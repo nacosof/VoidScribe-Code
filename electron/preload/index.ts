@@ -31,6 +31,7 @@ const api: VoidScribeApi = {
     streamChat: (input) => ipcRenderer.invoke("chat:stream", input),
     cancelChat: (requestId) => ipcRenderer.invoke("chat:cancel", requestId),
     interruptAgent: () => ipcRenderer.invoke("agent:interrupt"),
+    respondAgentApproval: (input) => ipcRenderer.invoke("agent:approval-respond", input),
     flushAgentStagedFiles: (paths) => ipcRenderer.invoke("agent:flushStaged", paths),
     restoreChatCheckpoint: (checkpoint) => ipcRenderer.invoke("chat:restoreCheckpoint", checkpoint),
     listMcpServers: () => ipcRenderer.invoke("mcp:listServers"),
@@ -132,6 +133,17 @@ const api: VoidScribeApi = {
         }) => callback(payload as Parameters<VoidScribeApi["onAgentTranscript"]>[0] extends (p: infer P) => void ? P : never);
         ipcRenderer.on("agent:transcript", listener);
         return () => ipcRenderer.removeListener("agent:transcript", listener);
+    },
+    onAgentApprovalRequest: (callback) => {
+        const listener = (_: unknown, payload: {
+            id: string;
+            kind: "run_command" | "mcp" | "delete_path" | "auto_install" | "write";
+            title: string;
+            detail: string;
+            fingerprint: string;
+        }) => callback(payload);
+        ipcRenderer.on("agent:approval-request", listener);
+        return () => ipcRenderer.removeListener("agent:approval-request", listener);
     },
     onTerminalData: (callback) => {
         const listener = (_: unknown, payload: {

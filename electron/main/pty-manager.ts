@@ -98,6 +98,12 @@ function spawnNativeShell(session: TerminalSession): {
         session.pty = null;
         send("terminal:exit", { sessionId: session.id, exitCode });
     });
+    // Kick a newline so PowerShell/ConPTY paints a prompt immediately.
+    try {
+        session.pty.write("\r");
+    }
+    catch {
+    }
     return { ok: true };
 }
 function spawnPipeShell(session: TerminalSession): {

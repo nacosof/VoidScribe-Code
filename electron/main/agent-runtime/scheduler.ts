@@ -1,4 +1,4 @@
-import { AGENT_MAX_STALL_CONTINUES, AGENT_STALL_CONTINUE_NUDGE, AGENT_STEP_LIMIT_NOTE, AGENT_SUMMARY_AFTER_TOOLS_NUDGE, AGENT_TRUNCATION_USER_NOTE, batchNeedsUserSummary, buildTruncationNudge, createAssistantTextStreamer, looksLikeStalledAgentReply, } from "../agent-reliability";
+import { AGENT_COMMAND_LOOP_NOTE, AGENT_COMMAND_LOOP_NUDGE, AGENT_MAX_IDENTICAL_COMMANDS, AGENT_MAX_STALL_CONTINUES, AGENT_MISSING_PROJECT_NUDGE, AGENT_STALL_CONTINUE_NUDGE, AGENT_STEP_LIMIT_NOTE, AGENT_SUMMARY_AFTER_TOOLS_NUDGE, AGENT_TRUNCATION_USER_NOTE, AGENT_USER_FIX_NUDGE, batchNeedsUserSummary, buildTruncationNudge, commandCallFingerprint, createAssistantTextStreamer, getLastUserMessageText, looksLikeStalledAgentReply, replyLooksLikeFinishedWithUrl, toolTextMissingPackageJson, userWantsRuntimeFix, } from "../agent-reliability";
 import { resolveAgentStepLimit } from "../../../src/lib/agent-steps";
 import type { AgentTranscriptTurn } from "../../../src/lib/agent-transcript";
 import type { AgentToolEvent } from "./events";
@@ -6,7 +6,6 @@ import type { AgentSchedulerProvider } from "./provider-types";
 import { AgentTranscriptCollector } from "./transcript-collector";
 import { executeAgentToolBatch, type AgentToolBatchResult, type AgentToolCallRequest, } from "./tool-batch";
 import { salvageWriteArguments } from "../agent-tool-parse";
-const MUTATING_TOOLS = new Set(["write_file", "search_replace", "delete_path"]);
 export async function runAgentScheduler(input: {
     provider: AgentSchedulerProvider;
     maxAgentSteps?: number;
@@ -30,6 +29,7 @@ export async function runAgentScheduler(input: {
     let failedToolSteps = 0;
     let stallContinues = 0;
     let summaryNudgesSent = 0;
+    const commandRunCounts = new Map<string, number>();
     for (let step = 0; stepLimit === null || step < stepLimit; step += 1) {
         if (signal?.aborted) {
             throw new DOMException("Aborted", "AbortError");
@@ -51,11 +51,16 @@ export async function runAgentScheduler(input: {
                 streamAssistantText.reset();
             }
             transcriptCollector.beginToolTurn(modelStepResult.visibleText || undefined);
-            provider.recordAssistantToolStep(modelStepResult);
+            // Execute one tool per step (policy) — record ONLY that call so providers
+            // never see orphaned tool_call IDs (which caused repeat loops).
             const preparedCalls = modelStepResult.toolCalls.slice(0, 1).map((call) => ({
                 ...call,
                 arguments: salvageWriteArguments(call.name, call.arguments, modelStepResult.visibleText),
             }));
+            provider.recordAssistantToolStep({
+                ...modelStepResult,
+                toolCalls: preparedCalls,
+            });
             const batchResults = await executeAgentToolBatch({
                 calls: preparedCalls,
                 transcriptCollector,
@@ -68,6 +73,35 @@ export async function runAgentScheduler(input: {
             transcriptCollector.finishToolTurn();
             emitTranscript();
             onEvent({ type: "tool_done", name: "model", detail: modelStep });
+
+            let commandLoopStop = false;
+            for (const item of batchResults) {
+                if (item.call.name !== "run_command")
+                    continue;
+                const fingerprint = commandCallFingerprint(item.call.arguments);
+                const nextCount = (commandRunCounts.get(fingerprint) ?? 0) + 1;
+                commandRunCounts.set(fingerprint, nextCount);
+                if (nextCount >= AGENT_MAX_IDENTICAL_COMMANDS) {
+                    streamAssistantText.push(AGENT_COMMAND_LOOP_NOTE);
+                    transcriptCollector.recordFinalText("agent command loop");
+                    emitTranscript();
+                    commandLoopStop = true;
+                    break;
+                }
+                if (nextCount >= 2 || item.result.ok === false) {
+                    provider.injectUserNudge?.(AGENT_COMMAND_LOOP_NUDGE);
+                }
+            }
+            if (commandLoopStop)
+                return;
+
+            const missingPkg = batchResults.find((item) => item.call.name === "run_command" &&
+                item.result.ok === false &&
+                toolTextMissingPackageJson(item.result.text));
+            if (missingPkg) {
+                provider.injectUserNudge?.(AGENT_MISSING_PROJECT_NUDGE);
+            }
+
             const writeSucceeded = batchResults.some((item) => (item.call.name === "write_file" || item.call.name === "search_replace") &&
                 item.result.ok !== false);
             const deleteStaged = batchResults.some((item) => item.call.name === "delete_path" && item.result.ok !== false);
@@ -135,8 +169,11 @@ export async function runAgentScheduler(input: {
                 }
                 return;
             }
-            if (looksLikeStalledAgentReply(modelStepResult.visibleText) &&
-                stallContinues < AGENT_MAX_STALL_CONTINUES) {
+            const lastUser = getLastUserMessageText(provider.getMessages());
+            const wantsFix = userWantsRuntimeFix(lastUser);
+            const stalledTalk = looksLikeStalledAgentReply(modelStepResult.visibleText);
+            const unfinishedFix = wantsFix && !replyLooksLikeFinishedWithUrl(modelStepResult.visibleText);
+            if ((stalledTalk || unfinishedFix) && stallContinues < AGENT_MAX_STALL_CONTINUES) {
                 stallContinues += 1;
                 if (provider.recordAssistantTextForNudge) {
                     provider.recordAssistantTextForNudge();
@@ -144,7 +181,9 @@ export async function runAgentScheduler(input: {
                 else {
                     provider.recordNudgeUserMessage?.(modelStepResult);
                 }
-                provider.injectUserNudge?.(AGENT_STALL_CONTINUE_NUDGE);
+                provider.injectUserNudge?.(unfinishedFix && !stalledTalk
+                    ? AGENT_USER_FIX_NUDGE
+                    : AGENT_STALL_CONTINUE_NUDGE);
                 continue;
             }
             streamAssistantText.push(modelStepResult.visibleText);

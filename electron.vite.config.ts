@@ -25,6 +25,9 @@ export default defineConfig({
     resolve: { alias: { "@": resolve(__dirname, "src") } },
     plugins: [react()],
     server: {
+      // Bind IPv4 explicitly — Electron on Windows often resolves localhost → 127.0.0.1
+      // while Vite defaults to [::1], which causes ERR_CONNECTION_REFUSED.
+      host: "127.0.0.1",
       port: 14200,
       strictPort: true,
     },

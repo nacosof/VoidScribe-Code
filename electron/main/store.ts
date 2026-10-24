@@ -12,6 +12,7 @@ export type PersistedSettings = AgentSettingsState & {
     maxAgentSteps?: number;
     requestTimeoutMs?: number;
     defaultChatMode?: ChatInteractionMode;
+    agentPermissionMode?: "read" | "ask" | "full";
 };
 export type SettingsSavePatch = Partial<AgentSettingsState> & {
     addAgent?: {
@@ -94,6 +95,13 @@ export function saveSettings(patch: SettingsSavePatch = {}): PersistedSettings {
         state.windowLayout = patch.windowLayout;
     if (patch.defaultChatMode !== undefined)
         state.defaultChatMode = patch.defaultChatMode;
+    if (patch.agentPermissionMode !== undefined) {
+        state.agentPermissionMode = patch.agentPermissionMode === "full"
+            ? "full"
+            : patch.agentPermissionMode === "read"
+                ? "read"
+                : "ask";
+    }
     if (patch.activePresetId) {
         state = selectPreset(state, patch.activePresetId);
     }

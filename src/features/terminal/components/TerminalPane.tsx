@@ -65,7 +65,8 @@ export function TerminalPane({
         fitRef.current = fit;
         term.onData((data) => {
             if (readonly) {
-                if (data.includes("\x03"))
+                // Ctrl+C with a selection is copy — don't kill the agent.
+                if (data.includes("\x03") && !term.hasSelection())
                     onInterruptRef.current?.();
                 return;
             }
@@ -75,6 +76,8 @@ export function TerminalPane({
             if (!readonly || !onInterruptRef.current)
                 return true;
             if (event.ctrlKey && event.key === "c" && event.type === "keydown") {
+                if (term.hasSelection())
+                    return true;
                 onInterruptRef.current();
                 return false;
             }
@@ -97,17 +100,35 @@ export function TerminalPane({
             return;
         const term = termRef.current;
         const fit = fitRef.current;
+        const host = hostRef.current;
         if (!term || !fit)
             return;
-        requestAnimationFrame(() => {
+        const applyFit = () => {
             try {
                 fit.fit();
+                const cols = Math.max(2, term.cols);
+                const rows = Math.max(1, term.rows);
+                void window.voidscribe.terminalResize(sessionId, cols, rows);
                 term.scrollToBottom();
+                term.focus();
             }
             catch {
             }
-        });
-    }, [active]);
+        };
+        requestAnimationFrame(applyFit);
+        const t1 = window.setTimeout(applyFit, 50);
+        const t2 = window.setTimeout(applyFit, 180);
+        let observer: ResizeObserver | null = null;
+        if (host && typeof ResizeObserver !== "undefined") {
+            observer = new ResizeObserver(() => applyFit());
+            observer.observe(host);
+        }
+        return () => {
+            window.clearTimeout(t1);
+            window.clearTimeout(t2);
+            observer?.disconnect();
+        };
+    }, [active, sessionId]);
 
     const handleContextMenu = useCallback((event: MouseEvent<HTMLDivElement>) => {
         event.preventDefault();

@@ -30,11 +30,14 @@ type WorkspaceConsoleProps = {
     workspacePath: string;
     lang: UiLanguage;
     hidden?: boolean;
+    /** bottom = IDE dock under editor; right = vibe side rail (fills parent) */
+    dock?: "bottom" | "right";
     onClose: () => void;
     onAgentInterrupt?: () => void;
 };
 
-export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceConsoleProps>(function WorkspaceConsole({ workspacePath, lang, hidden = false, onClose, onAgentInterrupt }, ref) {
+export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceConsoleProps>(function WorkspaceConsole({ workspacePath, lang, hidden = false, dock = "bottom", onClose, onAgentInterrupt }, ref) {
+    const sideDock = dock === "right";
     const [panelHeight, setPanelHeight] = useState(readStoredTerminalHeight);
     const [resizing, setResizing] = useState(false);
     const [terminalMaximized, setTerminalMaximized] = useState(false);
@@ -411,9 +414,18 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
         }
         setBootError("");
         setPanelTab("terminal");
-        setSessions((prev) => [...prev, result.session]);
-        setActiveId(result.session.id);
-        await window.voidscribe.terminalSelect(result.session.id);
+        // Prefer server list (create already broadcasts) — avoid duplicate session rows.
+        const list = await window.voidscribe.terminalList();
+        setSessions(list.sessions);
+        const nextId = result.session.id;
+        activeIdRef.current = nextId;
+        setActiveId(nextId);
+        await window.voidscribe.terminalSelect(nextId);
+        requestAnimationFrame(() => {
+            fitActiveTerminal({ focus: true });
+            window.setTimeout(() => fitActiveTerminal({ focus: true }), 60);
+            window.setTimeout(() => fitActiveTerminal({ focus: true }), 200);
+        });
     }
 
     async function handleSelectSession(id: string) {
@@ -502,17 +514,21 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
     return (
         <section
             ref={panelRef}
-            className={`terminal-panel terminal-panel--open terminal-panel--editor-dock${resizing ? " terminal-panel--resizing" : ""}${hidden ? " terminal-panel--hidden" : ""}`}
-            style={{ height: hidden ? 0 : panelHeight }}
+            className={`terminal-panel terminal-panel--open terminal-panel--editor-dock${sideDock ? " terminal-panel--side-dock" : ""}${resizing ? " terminal-panel--resizing" : ""}${hidden ? " terminal-panel--hidden" : ""}`}
+            style={sideDock
+                ? { height: hidden ? 0 : "100%", width: "100%" }
+                : { height: hidden ? 0 : panelHeight }}
             aria-label={t(lang, "titleTerminal")}
         >
-            <div
-                className="terminal-panel__resize-handle"
-                onPointerDown={handleResizePointerDown}
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label={t(lang, "terminalResize")}
-            />
+            {sideDock ? null : (
+                <div
+                    className="terminal-panel__resize-handle"
+                    onPointerDown={handleResizePointerDown}
+                    role="separator"
+                    aria-orientation="horizontal"
+                    aria-label={t(lang, "terminalResize")}
+                />
+            )}
             <header className="terminal-panel__tabbar terminal-panel__tabbar--header">
                 {PANEL_TABS.map((tab) => (
                     <button
@@ -530,17 +546,19 @@ export const WorkspaceConsole = forwardRef<WorkspaceConsoleHandle, WorkspaceCons
                         <path d="M12 5v14M5 12h14" />
                     </svg>
                 </button>
-                <button
-                    type="button"
-                    className={`terminal-panel__tool-btn${terminalMaximized ? " terminal-panel__tool-btn--maximized" : ""}`}
-                    onClick={handleMaximizeTerminal}
-                    aria-label={t(lang, terminalMaximized ? "terminalRestore" : "terminalMaximize")}
-                    title={t(lang, terminalMaximized ? "terminalRestore" : "terminalMaximize")}
-                >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="M18 15l-6-6-6 6" />
-                    </svg>
-                </button>
+                {sideDock ? null : (
+                    <button
+                        type="button"
+                        className={`terminal-panel__tool-btn${terminalMaximized ? " terminal-panel__tool-btn--maximized" : ""}`}
+                        onClick={handleMaximizeTerminal}
+                        aria-label={t(lang, terminalMaximized ? "terminalRestore" : "terminalMaximize")}
+                        title={t(lang, terminalMaximized ? "terminalRestore" : "terminalMaximize")}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="M18 15l-6-6-6 6" />
+                        </svg>
+                    </button>
+                )}
                 <button type="button" className="terminal-panel__tool-btn" onClick={onClose} aria-label={t(lang, "terminalHide")} title={t(lang, "terminalHide")}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                         <path d="M18 6L6 18M6 6l12 12" />

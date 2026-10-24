@@ -2,6 +2,8 @@ import { WorkspaceEditOverlay } from "../agent-runtime/edit-overlay";
 import { toolText, type AgentToolResult } from "../agent-tool-result";
 import type { AgentToolEvent } from "../agent-runtime/events";
 import type { ChatInteractionMode } from "../../../src/lib/chat-modes";
+import { permissionAllowsTool } from "../../../src/lib/agent-permission";
+import { getAgentPermissionMode } from "../agent-approval";
 import { dispatchBuiltinTool } from "./dispatch";
 import type { ToolExecutionContext } from "./context";
 import { asErrorText, parseToolArgs, toolDetailForError } from "./utils";
@@ -30,6 +32,12 @@ export async function executeAgentTool(input: {
     emit(onEvent, { type: "tool_start", name, detail: toolDetailForError(name, args, workspaceRoot) });
 
     try {
+        const policy = permissionAllowsTool(getAgentPermissionMode(), name);
+        if (policy === "deny") {
+            const message = "Режим «Только чтение»: запись, команды и MCP запрещены. Переключи доступ на Workspace Write или Full access.";
+            emit(onEvent, { type: "tool_done", name, detail: toolDetailForError(name, args, workspaceRoot), failed: true, error: message });
+            return toolText(`Error: ${message}`, false);
+        }
         const ctx: ToolExecutionContext = {
             workspaceRoot,
             name,

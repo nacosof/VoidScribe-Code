@@ -167,8 +167,9 @@ function nextJsToolchainAgentNote(combined: string): string {
     else if (/ERESOLVE unable to resolve dependency tree/i.test(combined)) {
         notes.push("➡️ npm install конфликт peer deps: read_file package.json → search_replace версии (Next 16: eslint ^9 с eslint-config-next), затем npm install снова.");
     }
-    if (/ENOENT.*package\.json|could not read package\.json|npm error code enoent/i.test(combined)) {
-        notes.push("➡️ package.json не найден в текущей cwd. Если проект в подпапке — run_command с cwd: «имя-подпапки» для npm install / npm run dev.");
+    if (/ENOENT.*package\.json|could not read package\.json|npm error code enoent|нет package\.json/i.test(combined)) {
+        notes.push("➡️ Нет package.json в cwd. Если пользователь просил НОВЫЙ сайт — сразу scaffold (create-next-app / npm create vite), npm install, потом код. " +
+            "Если проект уже в подпапке — run_command с cwd: «имя-подпапки». ЗАПРЕЩЕНО повторять npm run dev без package.json.");
     }
     return notes.join("\n");
 }
@@ -196,8 +197,8 @@ export function summarizeCommandFailureForUser(input: {
     if (/Dev-сервер не ответил/i.test(combined)) {
         return "Dev-сервер не запустился за 2 мин. Сначала npm install, затем npm run dev из папки проекта.";
     }
-    if (/ENOENT.*package\.json|npm error code enoent/i.test(combined)) {
-        return "Команда запущена не из той папки — нужна подпапка с package.json.";
+    if (/ENOENT.*package\.json|npm error code enoent|нет package\.json/i.test(combined)) {
+        return "Нет package.json — нужен scaffold проекта или cwd в подпапку с package.json, не повтор npm run dev.";
     }
     const tsMatch = combined.match(/error TS\d+:[^\n]+/);
     if (tsMatch) {

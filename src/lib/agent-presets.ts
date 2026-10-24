@@ -1,5 +1,6 @@
 import { isLocalProvider, providerById, resolveProviderBaseUrl, LOCAL_API_KEY, type UserAiProviderId } from "./providers";
 import { normalizeChatMode, type ChatInteractionMode } from "./chat-modes";
+import { normalizeAgentPermissionMode, type AgentPermissionMode } from "./agent-permission";
 export type AgentPreset = {
     id: string;
     name: string;
@@ -17,6 +18,7 @@ export type AgentSettingsState = {
     theme?: string;
     windowLayout?: "editor" | "agent";
     defaultChatMode?: ChatInteractionMode;
+    agentPermissionMode?: AgentPermissionMode;
 };
 export function createPresetId(): string {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -81,6 +83,7 @@ export function normalizeAgentSettings(raw: Partial<AgentSettingsState> & Record
     const theme = typeof raw.theme === "string" ? raw.theme : "voidscribe";
     const windowLayout = raw.windowLayout === "agent" ? "agent" : "editor";
     const defaultChatMode = normalizeChatMode(raw.defaultChatMode as ChatInteractionMode | "gather" | undefined);
+    const agentPermissionMode = normalizeAgentPermissionMode(raw.agentPermissionMode);
     if (Array.isArray(raw.presets) && raw.presets.length > 0) {
         const presets = raw.presets
             .map((item) => mapRawPreset(item as Record<string, unknown>))
@@ -89,11 +92,11 @@ export function normalizeAgentSettings(raw: Partial<AgentSettingsState> & Record
             presets.some((item) => item.id === raw.activePresetId)
             ? raw.activePresetId
             : (presets[0]?.id ?? "");
-        return { activePresetId, presets, language, theme, windowLayout, defaultChatMode };
+        return { activePresetId, presets, language, theme, windowLayout, defaultChatMode, agentPermissionMode };
     }
     const apiKey = typeof raw.apiKey === "string" ? raw.apiKey.trim() : "";
     if (!apiKey) {
-        return { activePresetId: "", presets: [], language, theme, windowLayout, defaultChatMode };
+        return { activePresetId: "", presets: [], language, theme, windowLayout, defaultChatMode, agentPermissionMode };
     }
     const provider = typeof raw.provider === "string" ? (raw.provider as UserAiProviderId) : "openai";
     const model = typeof raw.model === "string" && raw.model.trim()
@@ -111,7 +114,7 @@ export function normalizeAgentSettings(raw: Partial<AgentSettingsState> & Record
                 provider,
                 model,
                 apiKey,
-                baseUrl: typeof raw.baseUrl === "string" ? raw.baseUrl : undefined,
+                baseUrl: resolveProviderBaseUrl(provider, typeof raw.baseUrl === "string" ? raw.baseUrl : undefined),
                 maxOutputTokens: typeof raw.maxOutputTokens === "number" ? raw.maxOutputTokens : undefined,
                 maxAgentSteps: typeof raw.maxAgentSteps === "number" ? raw.maxAgentSteps : undefined,
             },
@@ -120,6 +123,7 @@ export function normalizeAgentSettings(raw: Partial<AgentSettingsState> & Record
         theme,
         windowLayout,
         defaultChatMode,
+        agentPermissionMode,
     };
 }
 export function selectPreset(settings: AgentSettingsState, presetId: string): AgentSettingsState {

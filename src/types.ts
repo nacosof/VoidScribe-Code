@@ -78,6 +78,8 @@ export type AgentActivity = {
     failed?: boolean;
     error?: string;
     checkpointId?: string;
+    step?: string;
+    chars?: number;
     at: number;
 };
 export type PendingFileChange = {
@@ -101,6 +103,7 @@ export type AiSettings = {
     theme?: UiTheme;
     windowLayout?: WindowLayout;
     defaultChatMode?: ChatInteractionMode;
+    agentPermissionMode?: "read" | "ask" | "full";
 };
 export type SettingsSavePatch = Partial<AiSettings> & {
     addAgent?: {
@@ -268,6 +271,12 @@ export type VoidScribeApi = {
     interruptAgent(): Promise<ApiResult<{
         cancelled: string[];
     }>>;
+    respondAgentApproval(input: {
+        id: string;
+        decision: "allow" | "deny" | "always";
+    }): Promise<ApiResult<{
+        resolved: boolean;
+    }>>;
     flushAgentStagedFiles(paths?: string[]): Promise<ApiResult<{
         flushed: string[];
     }>>;
@@ -334,6 +343,13 @@ export type VoidScribeApi = {
     onAgentTranscript(callback: (payload: {
         requestId: string;
         turns: AgentTranscriptTurn[];
+    }) => void): () => void;
+    onAgentApprovalRequest(callback: (payload: {
+        id: string;
+        kind: "run_command" | "mcp" | "delete_path" | "auto_install" | "write";
+        title: string;
+        detail: string;
+        fingerprint: string;
     }) => void): () => void;
 };
 declare global {

@@ -32,10 +32,24 @@ export const LOCAL_PROVIDER_DEFAULTS = {
     lmstudio: "http://127.0.0.1:1234/v1",
 } as const;
 export const LOCAL_API_KEY = "local";
+
+/** OpenAI SDK appends `/chat/completions` to baseURL. LM Studio/Ollama need `…/v1`. */
+export function ensureOpenAiV1BaseUrl(baseUrl: string): string {
+    const cleaned = baseUrl.trim().replace(/\/+$/, "");
+    if (!cleaned)
+        return cleaned;
+    if (/\/v1$/i.test(cleaned))
+        return cleaned;
+    return `${cleaned}/v1`;
+}
+
 export function resolveProviderBaseUrl(provider: UserAiProviderId, baseUrl?: string): string | undefined {
     const trimmed = baseUrl?.trim();
-    if (trimmed)
-        return trimmed;
+    if (trimmed) {
+        if (isLocalProvider(provider) || provider === "openai_compatible")
+            return ensureOpenAiV1BaseUrl(trimmed);
+        return trimmed.replace(/\/+$/, "");
+    }
     if (provider === "ollama")
         return LOCAL_PROVIDER_DEFAULTS.ollama;
     if (provider === "lmstudio")

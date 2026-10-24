@@ -95,8 +95,14 @@ export function buildAgentSteps(activities: AgentActivity[], options?: {
     const lang = options?.lang ?? "ru";
     const steps: UiAgentStep[] = [];
     for (const activity of activities) {
-        if (activity.type === "model_progress")
+        if (activity.type === "model_progress") {
+            const runningModel = [...steps].reverse().find((step) => step.kind === "model" && step.status === "running");
+            if (runningModel) {
+                const chars = typeof activity.chars === "number" ? activity.chars : 0;
+                runningModel.label = t(lang, "agentModelProgress", chars);
+            }
             continue;
+        }
         if (activity.type === "tool_start") {
             if (activity.name === "run_command") {
                 completeRunningModelSteps(steps);

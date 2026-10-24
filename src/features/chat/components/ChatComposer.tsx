@@ -1,8 +1,10 @@
 import { ChatModeSelector } from "@/components/ChatModeSelector";
 import { ModelSelector } from "@/components/ModelSelector";
+import { PermissionModeSelector } from "@/components/PermissionModeSelector";
 import { AgentChangesBar } from "@/components/AgentChangesBar";
 import { ComposerContextChips, handleComposerPaste } from "@/components/ComposerContextChips";
 import { t } from "@/lib/i18n";
+import { normalizeAgentPermissionMode, type AgentPermissionMode } from "@/lib/agent-permission";
 import type { RefObject } from "react";
 import type { ChatInteractionMode } from "@/lib/chat-modes";
 import type { AiSettings, ChatContextRef, ChatImage, PendingFileChange, UiLanguage } from "@/types";
@@ -25,6 +27,7 @@ type ChatComposerProps = {
     onImagesChange: (images: ChatImage[]) => void;
     onContextRefsChange: (refs: ChatContextRef[]) => void;
     onModeChange: (mode: ChatInteractionMode) => void;
+    onPermissionModeChange: (mode: AgentPermissionMode) => void;
     onSelectPreset: (presetId: string) => void;
     onOpenSettings: () => void;
     onAttachFile: () => void | Promise<void>;
@@ -53,6 +56,7 @@ export function ChatComposer({
     onImagesChange,
     onContextRefsChange,
     onModeChange,
+    onPermissionModeChange,
     onSelectPreset,
     onOpenSettings,
     onAttachFile,
@@ -64,6 +68,7 @@ export function ChatComposer({
 }: ChatComposerProps) {
     const canSend = Boolean(composer.trim()) || composerImages.length > 0 || composerContextRefs.length > 0;
     const canAttachFile = hasWorkspace && !streaming;
+    const permissionMode = normalizeAgentPermissionMode(settings.agentPermissionMode);
 
     return (
         <div className="composer">
@@ -150,6 +155,14 @@ export function ChatComposer({
                                 disabled={streaming}
                                 onChange={onModeChange}
                             />
+                            {mode === "agent" ? (
+                                <PermissionModeSelector
+                                    mode={permissionMode}
+                                    lang={lang}
+                                    disabled={streaming}
+                                    onChange={onPermissionModeChange}
+                                />
+                            ) : null}
                             <ModelSelector
                                 settings={settings}
                                 lang={lang}

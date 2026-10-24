@@ -22,7 +22,13 @@ export function resolveShellExecutable(): string {
     return process.env.SHELL ?? "/bin/bash";
 }
 export function shellSpawnEnv(): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = { ...process.env, FORCE_COLOR: "1" };
+    const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        FORCE_COLOR: "1",
+        CI: process.env.CI || "true",
+        NPM_CONFIG_YES: process.env.NPM_CONFIG_YES || "true",
+        DEBIAN_FRONTEND: process.env.DEBIAN_FRONTEND || "noninteractive",
+    };
     if (process.platform !== "win32")
         return env;
     const systemRoot = env.SystemRoot ?? "C:\\Windows";

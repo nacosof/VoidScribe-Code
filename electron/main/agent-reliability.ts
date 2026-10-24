@@ -1,10 +1,27 @@
 export const AGENT_TRUNCATION_USER_NOTE = "Ответ модели был обрезан. Продолжай с последнего успешного шага.";
 export const AGENT_STALL_CONTINUE_NUDGE = "Ты описал будущее действие, но не вызвал инструменты. Сейчас же вызови write_file, search_replace или run_command — без «подожди» и без обещаний. Сначала tool call, потом короткий итог.";
-export const AGENT_SUMMARY_AFTER_TOOLS_NUDGE = "Инструменты уже выполнены. Напиши пользователю 2–4 коротких предложения: что выяснил, что изменил, что проверить. Без новых tool calls — только текст.";
+export const AGENT_SUMMARY_AFTER_TOOLS_NUDGE = "Инструменты уже выполнены. Если задача пользователя ещё не доделана — сразу следующий tool call. Если доделана — 2–4 коротких предложения итога без новых tool calls.";
 export const AGENT_STEP_LIMIT_NOTE = "Достигнут лимит шагов агента за один запрос. Увеличьте «Макс. шагов агента» в настройках или отправьте сообщение снова — агент продолжит.";
 export const AGENT_CHAT_RETRIES = 2;
 export const AGENT_CHAT_RETRY_DELAY_MS = 1200;
 export const AGENT_MAX_STALL_CONTINUES = 3;
+export const AGENT_MAX_IDENTICAL_COMMANDS = 3;
+export const AGENT_COMMAND_LOOP_NOTE = "Агент несколько раз запускал одну и ту же команду без прогресса. Остановился — уточни задачу или разреши другой подход.";
+export const AGENT_COMMAND_LOOP_NUDGE = "Та же команда уже выполнялась и не дала прогресса. Не повторяй её. Прочитай код/логи, измени файлы или выбери другую команду.";
+export const AGENT_MISSING_PROJECT_NUDGE = "Нет package.json — npm/vite здесь бессмысленны. Сейчас же list_directory, затем scaffold: npx create-next-app@latest . --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --turbopack --yes (или npm create vite@latest . -- --template react-ts). Потом npm install, перенеси/напиши лендинг, только потом npm run dev. Не повторяй npm run dev и не пиши один app/page.tsx без package.json.";
+export const AGENT_USER_FIX_NUDGE = "Пользователь ждёт починку, а не отчёт. Сразу tool call (list_directory / read_file / run_command / write_file) — найди причину и исправь. Без «сейчас сделаю».";
+
+export function commandCallFingerprint(argsJson: string): string {
+    try {
+        const args = JSON.parse(argsJson) as { command?: unknown; cwd?: unknown };
+        const command = String(args.command ?? "").trim().replace(/\s+/g, " ");
+        const cwd = String(args.cwd ?? ".").trim() || ".";
+        return `${cwd}::${command}`.toLowerCase();
+    }
+    catch {
+        return argsJson.trim().toLowerCase();
+    }
+}
 export function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -74,6 +91,16 @@ export function looksLikeStalledAgentReply(text: string): boolean {
         return true;
     return (/(?:write_file|search_replace|run_command)/i.test(trimmed) &&
         /(?:сейчас|следующ|потом|затем|далее|now|next|then)/i.test(trimmed));
+}
+/** User is complaining / asking to fix a broken run — text-only replies are not enough. */
+export function userWantsRuntimeFix(text: string): boolean {
+    return /почин|исправ|не\s+работа|нихуя|enoent|connection\s*refused|не\s+открыв|не\s+запуска|упал|сломал|почему\s+(он|это|агент)|ало|продолж|сайт\s+то|сделай\s+сайт|запусти/i.test(text.trim());
+}
+export function replyLooksLikeFinishedWithUrl(text: string): boolean {
+    return /https?:\/\/(?:localhost|127\.0\.0\.1):\d+/i.test(text);
+}
+export function toolTextMissingPackageJson(text: string): boolean {
+    return /нет package\.json|ENOENT.*package\.json|could not read package\.json|npm error code enoent/i.test(text);
 }
 export function batchNeedsUserSummary(calls: Array<{
     name: string;

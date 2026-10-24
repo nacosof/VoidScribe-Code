@@ -7,10 +7,14 @@ import { WorkspaceConsole, type WorkspaceConsoleHandle } from "@/components/Work
 import { SettingsScreen } from "@/features/settings/components/SettingsScreen";
 import { OnboardingWizard, type OnboardingFinishPayload } from "@/features/onboarding/components/OnboardingWizard";
 import { ChatComposer } from "@/features/chat/components/ChatComposer";
+import { AgentApprovalDialog } from "@/components/AgentApprovalDialog";
 import { useAgentStream } from "@/features/chat/hooks/useAgentStream";
 import { useChatSend } from "@/features/chat/hooks/useChatSend";
 import { usePendingChanges } from "@/features/agent/hooks/usePendingChanges";
+import { useAgentApproval } from "@/features/agent/hooks/useAgentApproval";
+import { normalizeAgentPermissionMode, type AgentPermissionMode } from "@/lib/agent-permission";
 import { ChatTabsBar } from "@/components/ChatTabsBar";
+import { ChatSessionsSidebar } from "@/components/ChatSessionsSidebar";
 import { TitleBar } from "@/components/TitleBar";
 import { UnsavedFileDialog } from "@/components/UnsavedFileDialog";
 import { useEditorTabs } from "@/hooks/useEditorTabs";
@@ -37,12 +41,17 @@ const DEFAULT_SETTINGS: AiSettings = {
     theme: "voidscribe",
     windowLayout: "editor",
     defaultChatMode: "agent",
+    agentPermissionMode: "ask",
 };
 const SIDEBAR_WIDTH_KEY = "voidscribe-sidebar-width-v1";
 const CHAT_WIDTH_KEY = "voidscribe-chat-width-v1";
+const VIBE_TERMINAL_WIDTH_KEY = "voidscribe-vibe-terminal-width-v1";
 const CHAT_MIN_WIDTH = 280;
 const CHAT_MAX_WIDTH = 1100;
 const CHAT_MIN_EDITOR_WIDTH = 220;
+const VIBE_TERMINAL_MIN_WIDTH = 280;
+const VIBE_TERMINAL_MAX_WIDTH = 720;
+const VIBE_TERMINAL_DEFAULT_WIDTH = 420;
 
 function clampChatWidth(width: number, sidebarWidth: number, sidebarOpen: boolean): number {
     const sidebar = sidebarOpen ? sidebarWidth : 0;
@@ -77,6 +86,7 @@ export function App() {
     const [terminalOpen, setTerminalOpen] = useState(true);
     const [sidebarWidth, setSidebarWidth] = useState(() => readStoredWidth(SIDEBAR_WIDTH_KEY, 260));
     const [chatWidth, setChatWidth] = useState(() => readStoredWidth(CHAT_WIDTH_KEY, 380));
+    const [vibeTerminalWidth, setVibeTerminalWidth] = useState(() => readStoredWidth(VIBE_TERMINAL_WIDTH_KEY, VIBE_TERMINAL_DEFAULT_WIDTH));
     const [pendingOpenPath, setPendingOpenPath] = useState<string | null>(null);
     const [localDiscovery, setLocalDiscovery] = useState<LocalProviderStatus[]>([]);
     const [providerModels, setProviderModels] = useState<string[]>([]);
@@ -90,11 +100,13 @@ export function App() {
     chatsRef.current = chats;
     const lang = (settings.language ?? "en") as UiLanguage;
     const isChatLayout = (settings.windowLayout ?? "editor") === "agent";
-    const resizeRef = useRef<"sidebar" | "chat" | null>(null);
+    const resizeRef = useRef<"sidebar" | "chat" | "vibe-terminal" | null>(null);
     const sidebarWidthRef = useRef(sidebarWidth);
     const sidebarOpenRef = useRef(sidebarOpen);
+    const vibeTerminalWidthRef = useRef(vibeTerminalWidth);
     sidebarWidthRef.current = sidebarWidth;
     sidebarOpenRef.current = sidebarOpen;
+    vibeTerminalWidthRef.current = vibeTerminalWidth;
     const consoleRef = useRef<WorkspaceConsoleHandle>(null);
     const editorApiRef = useRef(editor);
     editorApiRef.current = editor;
@@ -168,12 +180,13 @@ export function App() {
         chatsRef,
         consoleRef,
         refreshTree,
-        autoOpenTerminal: !isChatLayout,
+        autoOpenTerminal: true,
         onTerminalOpen: () => setTerminalOpen(true),
         onFileChange: pending.trackFileChange,
         verifyPendingAfterFlush: pending.verifyPendingAfterFlush,
     });
     const { streaming, chatInflightRef, registerStream, clearStream, cancelStream, stopGeneration, } = agentStream;
+    const agentApproval = useAgentApproval();
     const clearComposer = useCallback(() => {
         setComposer("");
         setComposerImages([]);
@@ -330,6 +343,14 @@ export function App() {
             }
         });
     }, []);
+    const setPermissionMode = useCallback((next: AgentPermissionMode) => {
+        const mode = normalizeAgentPermissionMode(next);
+        void window.voidscribe.saveSettings({ agentPermissionMode: mode }).then((result) => {
+            if (result.ok) {
+                setSettings((prev) => ({ ...prev, agentPermissionMode: mode }));
+            }
+        });
+    }, []);
     useEffect(() => {
         void refreshProviderModels();
     }, [settings.provider, settings.baseUrl, settings.apiKey, refreshProviderModels]);
@@ -354,10 +375,11 @@ export function App() {
         try {
             localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
             localStorage.setItem(CHAT_WIDTH_KEY, String(chatWidth));
+            localStorage.setItem(VIBE_TERMINAL_WIDTH_KEY, String(vibeTerminalWidth));
         }
         catch {
         }
-    }, [sidebarWidth, chatWidth]);
+    }, [sidebarWidth, chatWidth, vibeTerminalWidth]);
     useEffect(() => {
         if (!workspacePath.trim() || isRestoringTabs || restoringTabsRef.current)
             return;
@@ -389,6 +411,10 @@ export function App() {
             if (resizeRef.current === "sidebar") {
                 setSidebarWidth(Math.min(520, Math.max(180, event.clientX)));
             }
+            else if (resizeRef.current === "vibe-terminal") {
+                const width = window.innerWidth - event.clientX;
+                setVibeTerminalWidth(Math.min(VIBE_TERMINAL_MAX_WIDTH, Math.max(VIBE_TERMINAL_MIN_WIDTH, Math.round(width))));
+            }
             else {
                 const width = window.innerWidth - event.clientX;
                 setChatWidth(clampChatWidth(width, sidebarWidthRef.current, sidebarOpenRef.current));
@@ -398,7 +424,7 @@ export function App() {
             if (!resizeRef.current)
                 return;
             resizeRef.current = null;
-            document.body.classList.remove("sidebar--resizing", "editor-chat--resizing");
+            document.body.classList.remove("sidebar--resizing", "editor-chat--resizing", "vibe-terminal--resizing");
         }
         window.addEventListener("mousemove", onMouseMove);
         window.addEventListener("mouseup", onMouseUp);
@@ -542,9 +568,11 @@ export function App() {
     }, [chatOpen, isChatLayout, chats.ensureSession]);
     const shellClass = [
         "app-shell",
-        isChatLayout ? "app-shell--chat-layout" : sidebarOpen ? "" : "app-shell--collapsed",
+        isChatLayout ? "app-shell--chat-layout" : "",
+        !sidebarOpen ? "app-shell--collapsed" : "",
         resizeRef.current === "sidebar" ? "app-shell--sidebar-resizing" : "",
         resizeRef.current === "chat" ? "app-shell--chat-resizing" : "",
+        resizeRef.current === "vibe-terminal" ? "app-shell--vibe-terminal-resizing" : "",
     ]
         .filter(Boolean)
         .join(" ");
@@ -578,76 +606,213 @@ export function App() {
       </div>);
     }
     return (<div className="app-frame">
-      <TitleBar lang={lang} recentWorkspaces={recentWorkspaces} fileMenuItems={fileMenuItems} centerTitle={titleBarCenter} sidebarOpen={sidebarOpen} chatOpen={chatOpen} onToggleSidebar={isChatLayout ? undefined : () => setSidebarOpen((open) => !open)} onToggleChat={isChatLayout ? undefined : handleToggleChat} terminalOpen={terminalOpen} onToggleTerminal={() => setTerminalOpen((open) => !open)} onOpenSettings={() => setView("settings")} onRequestClose={() => void window.voidscribe.windowClose()}/>
+      <TitleBar
+        lang={lang}
+        recentWorkspaces={recentWorkspaces}
+        fileMenuItems={fileMenuItems}
+        centerTitle={titleBarCenter}
+        sidebarOpen={sidebarOpen}
+        chatOpen={chatOpen}
+        onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        onToggleChat={isChatLayout ? undefined : handleToggleChat}
+        terminalOpen={terminalOpen}
+        onToggleTerminal={() => setTerminalOpen((open) => !open)}
+        onOpenSettings={() => setView("settings")}
+        onRequestClose={() => void window.voidscribe.windowClose()}
+      />
       <div className={shellClass}>
-        {!isChatLayout ? (<div className="sidebar-panel" style={{ width: sidebarOpen ? sidebarWidth : 0 }}>
-          <Sidebar workspacePath={workspacePath} selectedPath={editor.activePath} refreshKey={treeRefreshKey} lang={lang} pendingPaths={pending.workspacePendingPaths} errorPaths={fileTreeErrorPaths} onTreeFilePathsChange={setTreeFilePaths} onOpenFile={(path) => void openEditorFile(path)} onRefresh={refreshTreeNow} onEntriesDeleted={(entries) => editor.removeTabsForDeletedEntries(entries)}/>
-        </div>) : null}
-        {!isChatLayout && sidebarOpen ? (<button type="button" className="sidebar-panel__resizer" aria-label={t(lang, "titleSidebarHide")} onMouseDown={() => {
-                resizeRef.current = "sidebar";
-                document.body.classList.add("sidebar--resizing");
-            }}/>) : null}
+        <div className="sidebar-panel" style={{ width: sidebarOpen ? sidebarWidth : 0 }}>
+          {isChatLayout ? (
+            <ChatSessionsSidebar
+              sessions={chats.sessions}
+              activeId={chats.activeSessionId}
+              canClear={(chats.activeSession?.messages.length ?? 0) > 0}
+              lang={lang}
+              onSelect={chats.setActiveSessionId}
+              onClose={handleCloseChatTab}
+              onCreate={chats.newSession}
+              onClear={() => {
+                if (chats.activeSessionId)
+                  chats.clearSession(chats.activeSessionId);
+              }}
+            />
+          ) : (
+            <Sidebar
+              workspacePath={workspacePath}
+              selectedPath={editor.activePath}
+              refreshKey={treeRefreshKey}
+              lang={lang}
+              pendingPaths={pending.workspacePendingPaths}
+              errorPaths={fileTreeErrorPaths}
+              onTreeFilePathsChange={setTreeFilePaths}
+              onOpenFile={(path) => void openEditorFile(path)}
+              onRefresh={refreshTreeNow}
+              onEntriesDeleted={(entries) => editor.removeTabsForDeletedEntries(entries)}
+            />
+          )}
+        </div>
+        {sidebarOpen ? (
+          <button
+            type="button"
+            className="sidebar-panel__resizer"
+            aria-label={t(lang, "titleSidebarHide")}
+            onMouseDown={() => {
+              resizeRef.current = "sidebar";
+              document.body.classList.add("sidebar--resizing");
+            }}
+          />
+        ) : null}
         <main className="main">
-          <div className={`editor-workspace${isChatLayout ? " editor-workspace--chat-only" : ""}`}>
-            {!isChatLayout ? (<section className="editor-workspace__main">
-              <EditorTabsBar tabs={editor.tabs} activeId={editor.activeId} setActiveId={editor.setActiveId} closeTab={handleCloseTab} titleForPath={(path) => editor.buildEditorTabTitle(path, editor.tabs.map((tab) => tab.path))}/>
-              <div className="editor-workspace__editor">
-                <CodeEditorPanel tab={editor.activeTab} lang={lang} aiReady={aiReady} agentDiffActive={Boolean(pending.activeAgentPending)} agentDiffBaseline={pending.activeAgentPending?.previousContent ?? null} agentDiffAfter={pending.activeAgentPending?.newContent ?? null} onAddSelectionToChat={handleAddSelectionToChat} onAgentDiffUndo={() => {
-                if (pending.activeAgentPending)
-                    void pending.undoPendingChange(pending.activeAgentPending);
-            }} onAgentDiffKeep={() => {
-                if (pending.activeAgentPending)
-                    pending.keepPendingChange(pending.activeAgentPending);
-            }} onChange={editor.updateActiveContent} onSave={handleEditorSave} onRevert={handleEditorRevert} onSaveAs={handleEditorSaveAs} onRegisterGetContent={registerActiveEditorContent}/>
-              </div>
-              <WorkspaceConsole ref={consoleRef} workspacePath={workspacePath} lang={lang} hidden={!terminalOpen} onClose={() => setTerminalOpen(false)} onAgentInterrupt={stopGeneration}/>
-            </section>) : null}
-            {!isChatLayout ? (chatOpen ? (<button type="button" className="editor-workspace__resizer" aria-label={t(lang, "resizeChat")} onMouseDown={() => {
-                resizeRef.current = "chat";
-                document.body.classList.add("editor-chat--resizing");
-            }}/>) : null) : null}
-            <aside className={`editor-workspace__chat chat-panel${chatOpen || isChatLayout ? "" : " chat-panel--collapsed"}`} style={isChatLayout
-            ? { width: "100%", maxWidth: "none" }
-            : { width: chatOpen ? chatWidth : 0 }} aria-hidden={!isChatLayout && !chatOpen}>
-                  <ChatTabsBar sessions={chats.sessions} activeId={chats.activeSessionId} canClear={(chats.activeSession?.messages.length ?? 0) > 0} lang={lang} onSelect={chats.setActiveSessionId} onClose={handleCloseChatTab} onCreate={chats.newSession} onClear={() => {
-            if (chats.activeSessionId) {
-                chats.clearSession(chats.activeSessionId);
-            }
-        }}/>
-                  <MessageList messages={chats.activeSession?.messages ?? []} sessionId={chats.activeSessionId} streamingId={activeMessageId} chatActive={chatOpen || isChatLayout} lang={lang} onRestoreCheckpoint={(id) => void pending.restoreChatCheckpoint(id)}/>
-                  <ChatComposer
+          <div className={`editor-workspace${isChatLayout ? " editor-workspace--chat-only" : ""}${isChatLayout && terminalOpen ? " editor-workspace--vibe-terminal-open" : ""}`}>
+            {!isChatLayout ? (
+              <section className="editor-workspace__main">
+                <EditorTabsBar
+                  tabs={editor.tabs}
+                  activeId={editor.activeId}
+                  setActiveId={editor.setActiveId}
+                  closeTab={handleCloseTab}
+                  titleForPath={(path) => editor.buildEditorTabTitle(path, editor.tabs.map((tab) => tab.path))}
+                />
+                <div className="editor-workspace__editor">
+                  <CodeEditorPanel
+                    tab={editor.activeTab}
                     lang={lang}
-                    mode={mode}
-                    hasWorkspace={hasWorkspace}
-                    settings={settings}
-                    workspacePath={workspacePath}
-                    workspaceError={workspaceError}
-                    composer={composer}
-                    composerImages={composerImages}
-                    composerContextRefs={composerContextRefs}
-                    streaming={Boolean(streaming)}
-                    composerSupportsVision={composerSupportsVision}
-                    composerInputRef={composerInputRef}
-                    sessionPending={pending.sessionPending}
-                    onComposerChange={setComposer}
-                    onImagesChange={setComposerImages}
-                    onContextRefsChange={setComposerContextRefs}
-                    onModeChange={setMode}
-                    onSelectPreset={handleSelectPreset}
-                    onOpenSettings={() => setView("settings")}
-                    onAttachFile={handleAttachChatFile}
-                    onSend={() => void sendMessage()}
-                    onStop={() => void stopGeneration()}
-                    onUndoPending={(change) => void pending.undoPendingChange(change)}
-                    onKeepPending={(change) => void pending.keepPendingChange(change)}
-                    onOpenFile={handleOpenPendingFile}
+                    aiReady={aiReady}
+                    agentDiffActive={Boolean(pending.activeAgentPending)}
+                    agentDiffBaseline={pending.activeAgentPending?.previousContent ?? null}
+                    agentDiffAfter={pending.activeAgentPending?.newContent ?? null}
+                    onAddSelectionToChat={handleAddSelectionToChat}
+                    onAgentDiffUndo={() => {
+                      if (pending.activeAgentPending)
+                        void pending.undoPendingChange(pending.activeAgentPending);
+                    }}
+                    onAgentDiffKeep={() => {
+                      if (pending.activeAgentPending)
+                        pending.keepPendingChange(pending.activeAgentPending);
+                    }}
+                    onChange={editor.updateActiveContent}
+                    onSave={handleEditorSave}
+                    onRevert={handleEditorRevert}
+                    onSaveAs={handleEditorSaveAs}
+                    onRegisterGetContent={registerActiveEditorContent}
                   />
-                  {isChatLayout ? (<WorkspaceConsole ref={consoleRef} workspacePath={workspacePath} lang={lang} hidden={!terminalOpen} onClose={() => setTerminalOpen(false)} onAgentInterrupt={stopGeneration}/>) : null}
+                </div>
+                <WorkspaceConsole
+                  ref={consoleRef}
+                  workspacePath={workspacePath}
+                  lang={lang}
+                  hidden={!terminalOpen}
+                  onClose={() => setTerminalOpen(false)}
+                  onAgentInterrupt={stopGeneration}
+                />
+              </section>
+            ) : null}
+            {!isChatLayout && chatOpen ? (
+              <button
+                type="button"
+                className="editor-workspace__resizer"
+                aria-label={t(lang, "resizeChat")}
+                onMouseDown={() => {
+                  resizeRef.current = "chat";
+                  document.body.classList.add("editor-chat--resizing");
+                }}
+              />
+            ) : null}
+            <aside
+              className={`editor-workspace__chat chat-panel${chatOpen || isChatLayout ? "" : " chat-panel--collapsed"}${isChatLayout ? " chat-panel--vibe" : ""}`}
+              style={isChatLayout ? { flex: 1, width: "auto", maxWidth: "none" } : { width: chatOpen ? chatWidth : 0 }}
+              aria-hidden={!isChatLayout && !chatOpen}
+            >
+              {!isChatLayout ? (
+                <ChatTabsBar
+                  sessions={chats.sessions}
+                  activeId={chats.activeSessionId}
+                  canClear={(chats.activeSession?.messages.length ?? 0) > 0}
+                  lang={lang}
+                  onSelect={chats.setActiveSessionId}
+                  onClose={handleCloseChatTab}
+                  onCreate={chats.newSession}
+                  onClear={() => {
+                    if (chats.activeSessionId)
+                      chats.clearSession(chats.activeSessionId);
+                  }}
+                />
+              ) : null}
+              <MessageList
+                messages={chats.activeSession?.messages ?? []}
+                sessionId={chats.activeSessionId}
+                streamingId={activeMessageId}
+                chatActive={chatOpen || isChatLayout}
+                lang={lang}
+                onRestoreCheckpoint={(id) => void pending.restoreChatCheckpoint(id)}
+              />
+              <ChatComposer
+                lang={lang}
+                mode={mode}
+                hasWorkspace={hasWorkspace}
+                settings={settings}
+                workspacePath={workspacePath}
+                workspaceError={workspaceError}
+                composer={composer}
+                composerImages={composerImages}
+                composerContextRefs={composerContextRefs}
+                streaming={Boolean(streaming)}
+                composerSupportsVision={composerSupportsVision}
+                composerInputRef={composerInputRef}
+                sessionPending={pending.sessionPending}
+                onComposerChange={setComposer}
+                onImagesChange={setComposerImages}
+                onContextRefsChange={setComposerContextRefs}
+                onModeChange={setMode}
+                onPermissionModeChange={setPermissionMode}
+                onSelectPreset={handleSelectPreset}
+                onOpenSettings={() => setView("settings")}
+                onAttachFile={handleAttachChatFile}
+                onSend={() => void sendMessage()}
+                onStop={() => void stopGeneration()}
+                onUndoPending={(change) => void pending.undoPendingChange(change)}
+                onKeepPending={(change) => void pending.keepPendingChange(change)}
+                onOpenFile={handleOpenPendingFile}
+              />
             </aside>
+            {isChatLayout && terminalOpen ? (
+              <button
+                type="button"
+                className="editor-workspace__resizer"
+                aria-label={t(lang, "resizeChat")}
+                onMouseDown={() => {
+                  resizeRef.current = "vibe-terminal";
+                  document.body.classList.add("vibe-terminal--resizing");
+                }}
+              />
+            ) : null}
+            {isChatLayout ? (
+              <div
+                className={`vibe-terminal-rail${terminalOpen ? "" : " vibe-terminal-rail--collapsed"}`}
+                style={{ width: terminalOpen ? vibeTerminalWidth : 0 }}
+                aria-hidden={!terminalOpen}
+                onTransitionEnd={(event) => {
+                  if (event.propertyName !== "width" || !terminalOpen)
+                    return;
+                  consoleRef.current?.focus();
+                }}
+              >
+                <WorkspaceConsole
+                  ref={consoleRef}
+                  workspacePath={workspacePath}
+                  lang={lang}
+                  dock="right"
+                  hidden={!terminalOpen}
+                  onClose={() => setTerminalOpen(false)}
+                  onAgentInterrupt={stopGeneration}
+                />
+              </div>
+            ) : null}
           </div>
           {workspaceError ? <div className="code-editor__error">{workspaceError}</div> : null}
         </main>
       </div>
       <UnsavedFileDialog open={Boolean(unsavedClose)} filePath={unsavedClose?.path ?? ""} lang={lang} loading={unsavedClosing} error={unsavedError} onSave={() => void handleUnsavedSave()} onDiscard={handleUnsavedDiscard} onCancel={handleUnsavedCancel}/>
+      <AgentApprovalDialog request={agentApproval.request} lang={lang} onRespond={(decision) => void agentApproval.respond(decision)}/>
     </div>);
 }

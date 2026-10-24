@@ -8,6 +8,7 @@ import { validateDeletePath } from "../../agent-workspace";
 import { userIntentRequestsDelete } from "../../agent-path-edit-guard";
 import { capturePagePreview } from "../../page-preview";
 import { callMcpTool } from "../../mcp-service";
+import { requestAgentApproval } from "../../agent-approval";
 import { toolText, toolTextWithImages, type AgentToolResult } from "../../agent-tool-result";
 import { emitToolEvent, type ToolExecutionContext } from "../context";
 import { readStringArg } from "../utils";
@@ -49,6 +50,18 @@ export async function handleDiffFiles(ctx: ToolExecutionContext): Promise<AgentT
 export async function handleMcpTool(ctx: ToolExecutionContext): Promise<AgentToolResult> {
     if (ctx.interactionMode !== "agent") {
         throw new WorkspaceError("MCP tools are only available in Agent mode.");
+    }
+    const detail = `${ctx.name}\n${JSON.stringify(ctx.args ?? {}, null, 2).slice(0, 800)}`;
+    const approval = await requestAgentApproval({
+        kind: "mcp",
+        toolName: ctx.name,
+        title: "Разрешить MCP tool?",
+        detail,
+        fingerprint: `${ctx.name}:${JSON.stringify(ctx.args ?? {})}`.slice(0, 240),
+        signal: ctx.signal,
+    });
+    if (approval !== "allow") {
+        throw new WorkspaceError("Пользователь отклонил MCP tool.");
     }
     return toolText(await callMcpTool(ctx.name, ctx.args as Record<string, unknown>));
 }

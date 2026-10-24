@@ -4,7 +4,6 @@ import {
     cancelChatRequestWithCommands,
     endChatRequest,
     interruptAgentWork,
-    isAbortError,
 } from "../chat-requests";
 import { streamAgentChat } from "../agent";
 import { streamChatCompletion } from "../ai";
@@ -15,12 +14,22 @@ import { assertWorkspaceRoot } from "../workspace";
 import { WorkspaceEditOverlay } from "../agent-runtime/edit-overlay";
 import { restoreChatCheckpoint } from "../chat-checkpoints";
 import { listMcpServersStatus } from "../mcp-service";
+import { resolveAgentApproval, setAgentApprovalSender, type AgentApprovalDecision } from "../agent-approval";
 import type { AgentEditorContext, ChatMessage } from "../../../src/types";
 import type { AgentToolEvent } from "../agent-tools";
 import type { IpcContext } from "./context";
 import { fail, ok } from "./context";
 
 export function registerChatHandlers(ctx: IpcContext): void {
+    setAgentApprovalSender((payload) => ctx.send("agent:approval-request", payload));
+    ipcMain.handle("agent:approval-respond", (_e, payload: { id: string; decision: AgentApprovalDecision }) => {
+        const id = String(payload?.id ?? "");
+        const decision = payload?.decision;
+        if (!id || (decision !== "allow" && decision !== "deny" && decision !== "always")) {
+            return fail(new Error("Invalid approval response"));
+        }
+        return ok({ resolved: resolveAgentApproval(id, decision) });
+    });
     ipcMain.handle("chat:cancel", (_e, requestId: string) => ok({ cancelled: cancelChatRequestWithCommands(requestId) }));
     ipcMain.handle("agent:interrupt", () => ok({ cancelled: interruptAgentWork() }));
 
@@ -115,9 +124,14 @@ export function registerChatHandlers(ctx: IpcContext): void {
             return ok({});
         }
         catch (err) {
-            const message = isAbortError(err) ? "cancelled" : err instanceof Error ? err.message : String(err);
+            const cancelled = signal.aborted;
+            const message = cancelled
+                ? "cancelled"
+                : err instanceof Error
+                    ? err.message
+                    : String(err);
             ctx.send("chat:error", { requestId: input.requestId, error: message });
-            return fail(err);
+            return cancelled ? fail(new Error("cancelled")) : fail(err);
         }
         finally {
             endChatRequest(input.requestId);

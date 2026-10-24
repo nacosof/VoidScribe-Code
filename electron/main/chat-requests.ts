@@ -1,3 +1,4 @@
+import { clearAgentApprovals } from "./agent-approval";
 import { cancelActiveWorkspaceCommand } from "./terminal";
 const activeRequests = new Map<string, AbortController>();
 export function beginChatRequest(requestId: string): AbortSignal {
@@ -12,6 +13,7 @@ export function cancelChatRequest(requestId: string): boolean {
         return false;
     controller.abort();
     activeRequests.delete(requestId);
+    clearAgentApprovals();
     return true;
 }
 export function cancelAllChatRequests(): string[] {
@@ -25,10 +27,12 @@ export function cancelAllChatRequests(): string[] {
 }
 export function cancelChatRequestWithCommands(requestId: string): boolean {
     cancelActiveWorkspaceCommand();
+    clearAgentApprovals();
     return cancelChatRequest(requestId);
 }
 export function interruptAgentWork(): string[] {
     cancelActiveWorkspaceCommand();
+    clearAgentApprovals();
     return cancelAllChatRequests();
 }
 export function endChatRequest(requestId: string): void {

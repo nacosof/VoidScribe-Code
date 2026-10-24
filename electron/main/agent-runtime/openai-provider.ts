@@ -67,6 +67,12 @@ export function createOpenAiSchedulerProvider(options: OpenAiSchedulerProviderOp
                     if (input.signal?.aborted) {
                         throw new DOMException("Aborted", "AbortError");
                     }
+                    // Local servers (esp. LM Studio) often 400 on native tools / broken jinja —
+                    // drop tools first, before burning retries on fake "context overflow".
+                    if (localProvider && useNativeTools) {
+                        useNativeTools = false;
+                        continue;
+                    }
                     if (contextTrimAttempts < 4 &&
                         isLikelyContextOverflow400(err) &&
                         compactMessagesForApi(messages, provider, {
@@ -74,10 +80,6 @@ export function createOpenAiSchedulerProvider(options: OpenAiSchedulerProviderOp
                             aggressive: true,
                         })) {
                         contextTrimAttempts += 1;
-                        continue;
-                    }
-                    if (localProvider && useNativeTools && attempt < 2) {
-                        useNativeTools = false;
                         continue;
                     }
                     if (isRateLimitError(err) && attempt < 2) {
@@ -95,8 +97,13 @@ export function createOpenAiSchedulerProvider(options: OpenAiSchedulerProviderOp
                     throw err;
                 }
             }
-            if (!response) {
-                throw new Error("Пустой ответ модели.");
+            if (!response?.choices?.length) {
+                const bogus = response && typeof response === "object" && "error" in response
+                    ? String((response as { error?: unknown }).error)
+                    : "";
+                throw new Error(bogus
+                    ? `Локальный сервер отклонил запрос: ${bogus}`
+                    : "Пустой ответ модели (нет choices). Если Base URL без /v1 — LM Studio отвечает 200 без choices; если URL верный — модель могла сломаться на tools (проверь prompt template в LM Studio).");
             }
             const choice = response.choices[0];
             const message = choice?.message;
